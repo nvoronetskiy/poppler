@@ -248,6 +248,9 @@ public:
     // Returns -1 if the page dict does not contain a StructParents key.
     int getStructParents() const { return structParents; }
 
+    // For internal use only when pages are added/removed from the document
+    void changeNum(int newNum);
+
 private:
     // replace xref
     void replaceXRef(XRef *xrefA);
