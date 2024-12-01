@@ -655,6 +655,15 @@ Linearization *PDFDoc::getLinearization()
 
 void PDFDoc::resetLinearization()
 {
+    if (pageCache) {
+        for (int i = 0; i < getNumPages(); i++) {
+            if (pageCache[i]) {
+                delete pageCache[i];
+            }
+        }
+        gfree(pageCache);
+        pageCache = nullptr;
+    }
     linearization = new Linearization(nullptr);
     linearizationState = 0;
 }
