@@ -77,6 +77,10 @@ G_BEGIN_DECLS
 #define POPPLER_ANNOT_STAMP(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), POPPLER_TYPE_ANNOT_STAMP, PopplerAnnotStamp))
 #define POPPLER_IS_ANNOT_STAMP(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), POPPLER_TYPE_ANNOT_STAMP))
 
+#define POPPLER_TYPE_ANNOT_INK (poppler_annot_ink_get_type())
+#define POPPLER_ANNOT_INK(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), POPPLER_TYPE_ANNOT_INK, PopplerAnnotInk))
+#define POPPLER_IS_ANNOT_INK(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), POPPLER_TYPE_ANNOT_INK))
+
 typedef enum
 {
     POPPLER_ANNOT_UNKNOWN,
@@ -448,6 +452,16 @@ POPPLER_PUBLIC
 void poppler_annot_stamp_set_icon(PopplerAnnotStamp *poppler_annot, PopplerAnnotStampIcon icon);
 POPPLER_PUBLIC
 gboolean poppler_annot_stamp_set_custom_image(PopplerAnnotStamp *poppler_annot, cairo_surface_t *image, GError **error);
+
+/* PopplerAnnotInk */
+POPPLER_PUBLIC
+GType poppler_annot_ink_get_type(void) G_GNUC_CONST;
+POPPLER_PUBLIC
+PopplerAnnot *poppler_annot_ink_new(PopplerDocument *doc, PopplerRectangle *rect);
+POPPLER_PUBLIC
+void poppler_annot_ink_set_ink_list(PopplerAnnotInk *annot, GArray *ink_list);
+POPPLER_PUBLIC
+GArray *poppler_annot_ink_get_ink_list(PopplerAnnotInk *annot);
 
 G_END_DECLS
 
