@@ -462,6 +462,10 @@ POPPLER_PUBLIC
 void poppler_annot_ink_set_ink_list(PopplerAnnotInk *annot, GArray *ink_list);
 POPPLER_PUBLIC
 GArray *poppler_annot_ink_get_ink_list(PopplerAnnotInk *annot);
+POPPLER_PUBLIC
+void poppler_annot_ink_set_draw_below(PopplerAnnotInk *annot, gboolean draw_below);
+POPPLER_PUBLIC
+gboolean poppler_annot_ink_get_draw_below(PopplerAnnotInk *annot);
 
 G_END_DECLS
 

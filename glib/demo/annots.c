@@ -552,6 +552,8 @@ static void pgd_annot_view_set_annot_ink(GtkWidget *table, PopplerAnnotInk *ink_
 
     pgd_table_add_property(GTK_GRID(table), "<b>Ink List:</b>", ink_list_str->str, row);
     g_string_free(ink_list_str, TRUE);
+
+    pgd_table_add_property(GTK_GRID(table), "<b>Draw:</b>", poppler_annot_ink_get_draw_below(ink_annot) ? "below" : "above", row);
 }
 
 static void pgd_annots_file_attachment_save_dialog_response(GtkFileChooser *file_chooser, gint response, PopplerAttachment *attachment)

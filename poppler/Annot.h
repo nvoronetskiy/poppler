@@ -1374,6 +1374,8 @@ public:
     void draw(Gfx *gfx, bool printing) override;
 
     void setInkList(const std::vector<std::unique_ptr<AnnotPath>> &paths);
+    void setDrawBelow(bool drawBelow);
+    bool getDrawBelow();
 
     // getters
     const std::vector<std::unique_ptr<AnnotPath>> &getInkList() const { return inkList; }
@@ -1386,6 +1388,7 @@ private:
     // required
     std::vector<std::unique_ptr<AnnotPath>> inkList; // InkList
 
+    bool drawBelow;
     // optional
     // inherited from Annot
     // AnnotBorderBS border;  // BS
