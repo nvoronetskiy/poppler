@@ -83,7 +83,7 @@ static cairo_surface_t *doc_to_image(PDFDoc *doc, int page)
     cairo_font_options_destroy(font_options);
 
     output_dev.setCairo(cr);
-    if(draw_twice) {
+    if (draw_twice) {
         doc->displayPage(&output_dev, page, 72., 72., 0, false, true, false);
         doc->displayPage(&output_dev, page, 72., 72., 0, false, true, false);
     } else {
@@ -164,7 +164,7 @@ static int test_for_files(const int argc, const char *argv[], std::string const 
             int removed = 0;
             int npages = docs[i]->getNumPages();
             for (int j = 1; j <= npages; j++) {
-                if (to_remove.count(std::pair(i, j))) {
+                if (to_remove.contains(std::pair(i, j))) {
                     docs[i]->removePage(docs[i]->getPage(j - removed));
                     removed++;
                 }
@@ -177,7 +177,7 @@ static int test_for_files(const int argc, const char *argv[], std::string const 
     for (size_t i = 1; i < docs.size(); i++) {
         std::optional<std::map<Ref, Ref>> refMap = {};
         for (int j = 1; j <= docs[i]->getNumPages(); j++) {
-            if (removeFirst || to_remove.count(std::pair(i, j)) == 0) {
+            if (removeFirst || !to_remove.contains(std::pair(i, j))) {
                 latest_added = j;
                 docs[0]->insertPage(docs[i]->getPage(j), 1, refMap);
                 numPages++;

@@ -1389,8 +1389,8 @@ std::map<Ref, Ref> Catalog::insertPage(Page *page, int pageNum, std::optional<st
     Object newPageObj = xref->fetch(newPageRef);
 
     // FIXME: it is unclear what should be put for the page attrs here. nullptr for now.
-    PageAttrs *attrs = new PageAttrs(nullptr, newPageObj.getDict());
-    auto p = std::make_unique<Page>(doc, pageNum, std::move(newPageObj), newPageRef, attrs, form);
+    auto attrs = std::make_unique<PageAttrs>(nullptr, newPageObj.getDict());
+    auto p = std::make_unique<Page>(doc, pageNum, std::move(newPageObj), newPageRef, std::move(attrs), form);
     if (!p->isOk()) {
         error(errSyntaxError, -1, "Failed to create page (page {0:d})", pageNum);
     }
