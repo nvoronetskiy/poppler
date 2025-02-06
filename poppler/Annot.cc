@@ -978,6 +978,12 @@ Object AnnotAppearance::getAppearanceStream(AnnotAppearanceType type, const char
     if (apData.isDict() && state) {
         return apData.dictLookupNF(state).copy();
     } else if (apData.isRef()) {
+        // Ref can point to 1)Stream or 2)dictionary with named streams - Issue #1558
+        Object obj = apData.fetch(doc->getXRef());
+        if (obj.isDict() && state) {
+            return obj.dictLookupNF(state).copy();
+        }
+        obj.setToNull();
         return apData;
     }
 
@@ -4536,6 +4542,15 @@ bool AnnotAppearanceBuilder::drawText(const GooString *text, const Form *form, c
     //~ if there is no MK entry, this should use the existing content stream,
     //~ and only replace the marked content portion of it
     //~ (this is only relevant for Tx fields)
+
+    // Checkbox fields may come without a DA entry, spec requires it
+    // for all fields containing variable text but it seems Checkbox
+    // fields are de-facto not considered as such - Issue #1055
+    GooString daStackString;
+    if (!da && forceZapfDingbats) {
+        daStackString = GooString("/ZaDb 0 Tf 0 g");
+        da = &daStackString;
+    }
 
     // parse the default appearance string
     tfPos = tmPos = -1;
