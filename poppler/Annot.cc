@@ -6530,6 +6530,8 @@ AnnotInk::AnnotInk(PDFDoc *docA, PDFRectangle *rectA) : AnnotMarkup(docA, rectA)
     inkListArray->add(Object(vList));
     annotObj.dictSet("InkList", Object(inkListArray));
 
+    drawBelow = false;
+
     initialize(docA, annotObj.getDict());
 }
 
@@ -6557,6 +6559,18 @@ void AnnotInk::initialize(PDFDoc *docA, Dict *dict)
         // when that happens
         if (!obj1.isDict()) {
             ok = false;
+        }
+    }
+
+    drawBelow = false;
+
+    obj1 = getAppearanceResDict();
+    if (obj1.isDict()) {
+        if (obj1.dictLookup("ExtGState").isDict()) {
+            obj1 = obj1.dictLookup("ExtGState").dictGetVal(0);
+            if (obj1.isDict() && obj1.dictLookup("BM").isName("Multiply")) {
+                drawBelow = true;
+            }
         }
     }
 
@@ -6605,6 +6619,16 @@ void AnnotInk::setInkList(const std::vector<std::unique_ptr<AnnotPath>> &paths)
     invalidateAppearance();
 }
 
+void AnnotInk::setDrawBelow(bool drawBelow_)
+{
+    drawBelow = drawBelow_;
+}
+
+bool AnnotInk::getDrawBelow()
+{
+    return drawBelow;
+}
+
 void AnnotInk::draw(Gfx *gfx, bool printing)
 {
     double ca = 1;
@@ -6615,6 +6639,7 @@ void AnnotInk::draw(Gfx *gfx, bool printing)
 
     annotLocker();
     if (appearance.isNull()) {
+        Object newAppearance;
         appearBBox = std::make_unique<AnnotAppearanceBBox>(rect.get());
         ca = opacity;
 
@@ -6626,7 +6651,6 @@ void AnnotInk::draw(Gfx *gfx, bool printing)
         }
 
         appearBuilder.setLineStyleForBorder(*border);
-        appearBBox->setBorderWidth(std::max(1., border->getWidth()));
 
         for (const auto &path : inkList) {
             if (path && path->getCoordsLength() != 0) {
@@ -6646,15 +6670,17 @@ void AnnotInk::draw(Gfx *gfx, bool printing)
 
         double bbox[4];
         appearBBox->getBBoxRect(bbox);
-        if (ca == 1) {
-            appearance = createForm(appearBuilder.buffer(), bbox, false, nullptr);
+        if (ca == 1 && !drawBelow) {
+            newAppearance = createForm(appearBuilder.buffer(), bbox, false, nullptr);
         } else {
             Object aStream = createForm(appearBuilder.buffer(), bbox, true, nullptr);
 
             GooString appearBuf("/GS0 gs\n/Fm0 Do");
-            Dict *resDict = createResourcesDict("Fm0", std::move(aStream), "GS0", ca, nullptr);
-            appearance = createForm(&appearBuf, bbox, false, resDict);
+
+            Dict *resDict = createResourcesDict("Fm0", std::move(aStream), "GS0", ca, drawBelow ? "Multiply" : nullptr);
+            newAppearance = createForm(&appearBuf, bbox, false, resDict);
         }
+        setNewAppearance(std::move(newAppearance));
     }
 
     // draw the appearance stream

@@ -310,6 +310,7 @@ typedef struct _PopplerTextSpan PopplerTextSpan;
 typedef struct _PopplerPageRange PopplerPageRange;
 typedef struct _PopplerSignatureInfo PopplerSignatureInfo;
 typedef struct _PopplerAnnotStamp PopplerAnnotStamp;
+typedef struct _PopplerAnnotInk PopplerAnnotInk;
 typedef struct _PopplerCertificateInfo PopplerCertificateInfo;
 typedef struct _PopplerSigningData PopplerSigningData;
 

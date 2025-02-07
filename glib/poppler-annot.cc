@@ -47,6 +47,7 @@ typedef struct _PopplerAnnotLineClass PopplerAnnotLineClass;
 typedef struct _PopplerAnnotCircleClass PopplerAnnotCircleClass;
 typedef struct _PopplerAnnotSquareClass PopplerAnnotSquareClass;
 typedef struct _PopplerAnnotStampClass PopplerAnnotStampClass;
+typedef struct _PopplerAnnotInkClass PopplerAnnotInkClass;
 
 struct _PopplerAnnotClass
 {
@@ -167,6 +168,16 @@ struct _PopplerAnnotStampClass
     PopplerAnnotClass parent_class;
 };
 
+struct _PopplerAnnotInk
+{
+    PopplerAnnot parent_instance;
+};
+
+struct _PopplerAnnotInkClass
+{
+    PopplerAnnotClass parent_class;
+};
+
 G_DEFINE_TYPE(PopplerAnnot, poppler_annot, G_TYPE_OBJECT)
 G_DEFINE_TYPE(PopplerAnnotMarkup, poppler_annot_markup, POPPLER_TYPE_ANNOT)
 G_DEFINE_TYPE(PopplerAnnotTextMarkup, poppler_annot_text_markup, POPPLER_TYPE_ANNOT_MARKUP)
@@ -179,6 +190,7 @@ G_DEFINE_TYPE(PopplerAnnotLine, poppler_annot_line, POPPLER_TYPE_ANNOT_MARKUP)
 G_DEFINE_TYPE(PopplerAnnotCircle, poppler_annot_circle, POPPLER_TYPE_ANNOT_MARKUP)
 G_DEFINE_TYPE(PopplerAnnotSquare, poppler_annot_square, POPPLER_TYPE_ANNOT_MARKUP)
 G_DEFINE_TYPE(PopplerAnnotStamp, poppler_annot_stamp, POPPLER_TYPE_ANNOT)
+G_DEFINE_TYPE(PopplerAnnotInk, poppler_annot_ink, POPPLER_TYPE_ANNOT_MARKUP)
 
 static PopplerAnnot *_poppler_create_annot(GType annot_type, Annot *annot)
 {
@@ -2600,4 +2612,193 @@ PopplerFontDescription *poppler_font_description_copy(PopplerFontDescription *fo
     new_font_desc->font_name = g_strdup(font_desc->font_name);
 
     return new_font_desc;
+}
+
+static void poppler_annot_ink_class_init(PopplerAnnotInkClass *klass) { }
+
+static void poppler_annot_ink_init(PopplerAnnotInk *annot) { }
+
+/**
+ * poppler_annot_ink_set_ink_list:
+ * @annot: a #PopplerAnnotInk
+ * @ink_list: a #GArray of #GArray of PopplerPoint
+ *
+ * Each element of @ink_list is a path. The annotation must have
+ * already been added to a page, otherwise the annotation may be
+ * wrongly positioned if the page is rotated or has a cropbox.
+ *
+ * This function computes and set the appropriate smallest rectangle
+ * area that contains all the points of @ink_list. Setting the rectangle
+ * afterwards with #poppler_annot_set_rectangle should not be done
+ * to preserve scaling and positioning.
+ *
+ * Since: 25.03.0
+ */
+void poppler_annot_ink_set_ink_list(PopplerAnnotInk *annot, GArray *ink_list)
+{
+    double border_width;
+    PopplerRectangle r = { G_MAXDOUBLE, G_MAXDOUBLE, 0, 0 };
+    const PDFRectangle *crop_box;
+    const PDFRectangle zerobox = PDFRectangle();
+    Page *page = nullptr;
+    AnnotInk *ink_annot = static_cast<AnnotInk *>(POPPLER_ANNOT(annot)->annot);
+    std::vector<std::unique_ptr<AnnotPath>> paths;
+    poppler_annot_get_border_width(POPPLER_ANNOT(annot), &border_width);
+
+    crop_box = _poppler_annot_get_cropbox_and_page(POPPLER_ANNOT(annot), &page);
+    if (!crop_box) {
+        crop_box = &zerobox;
+    }
+
+    if (!page) {
+        g_warning("An inklist of an ink annotation was set while the annotation was not"
+                  " in a page, the computed coordinates may be wrong.");
+    }
+
+    for (guint i = 0; i < ink_list->len; ++i) {
+        GArray *points_array = g_array_index(ink_list, GArray *, i);
+        std::vector<AnnotCoord> coords;
+
+        for (guint j = 0; j < points_array->len; ++j) {
+            PopplerPoint point = g_array_index(points_array, PopplerPoint, j);
+
+            r.x1 = MIN(r.x1, point.x);
+            r.y1 = MIN(r.y1, point.y);
+
+            r.x2 = MAX(r.x2, point.x);
+            r.y2 = MAX(r.y2, point.y);
+
+            if (page) {
+                _page_unrotate_xy(page, &point.x, &point.y);
+            }
+            point.x += crop_box->x1;
+            point.y += crop_box->y1;
+            coords.emplace_back(point.x, point.y);
+        }
+        paths.emplace_back(new AnnotPath(std::move(coords)));
+    }
+    ink_annot->setInkList(paths);
+
+    r.x1 -= border_width;
+    r.y1 -= border_width;
+    r.x2 += 2 * border_width;
+    r.y2 += 2 * border_width;
+
+    poppler_annot_set_rectangle(POPPLER_ANNOT(annot), &r);
+}
+
+static void clear_garray(GArray **array)
+{
+    g_array_unref(*array);
+}
+
+/**
+ * poppler_annot_ink_get_ink_list:
+ * @annot: a #PopplerAnnotInk
+ *
+ * Each element of the return value is a path.
+ *
+ * Since: 25.03.0
+ *
+ * Returns: (transfer full): a GArray of GArray of PopplerPoint
+ */
+GArray *poppler_annot_ink_get_ink_list(PopplerAnnotInk *annot)
+{
+
+    GArray *ink_list;
+    const PDFRectangle *crop_box;
+    const PDFRectangle zerobox = PDFRectangle();
+    Page *page = nullptr;
+
+    AnnotInk *ink_annot = static_cast<AnnotInk *>(POPPLER_ANNOT(annot)->annot);
+    const std::vector<std::unique_ptr<AnnotPath>> &paths = ink_annot->getInkList();
+
+    ink_list = g_array_sized_new(FALSE, FALSE, sizeof(GArray *), paths.size());
+    g_array_set_clear_func(ink_list, (GDestroyNotify)clear_garray);
+
+    crop_box = _poppler_annot_get_cropbox_and_page(POPPLER_ANNOT(annot), &page);
+    if (!crop_box) {
+        crop_box = &zerobox;
+    }
+
+    for (const std::unique_ptr<AnnotPath> &path : paths) {
+        GArray *points_array = g_array_sized_new(FALSE, FALSE, sizeof(PopplerPoint), path->getCoordsLength());
+
+        for (int j = 0; j < path->getCoordsLength(); ++j) {
+            PopplerPoint point;
+            point.x = path->getX(j) - crop_box->x1;
+            point.y = path->getY(j) - crop_box->y1;
+            if (page) {
+                _page_rotate_xy(page, &point.x, &point.y);
+            }
+            g_array_append_val(points_array, point);
+        }
+
+        g_array_append_val(ink_list, points_array);
+    }
+
+    return ink_list;
+}
+
+/**
+ * poppler_annot_ink_set_draw_below:
+ * @annot: a #PopplerAnnotInk
+ * @draw_below: whether the annotation should be drawn below the document content
+ *
+ * This is typically used for highlight annotations. Technically, this implies that the
+ * annotation is drawn using a multiply blend mode.
+ *
+ * Since: 25.03.0
+ */
+void poppler_annot_ink_set_draw_below(PopplerAnnotInk *annot, gboolean draw_below)
+{
+    AnnotInk *ink_annot = static_cast<AnnotInk *>(POPPLER_ANNOT(annot)->annot);
+
+    ink_annot->setDrawBelow(draw_below);
+}
+
+/**
+ * poppler_annot_ink_get_draw_below:
+ * @annot: a #PopplerAnnotInk
+ *
+ * Returns whether the annotation is drawn below the page content or not.
+ *
+ * Since: 25.03.0
+ */
+gboolean poppler_annot_ink_get_draw_below(PopplerAnnotInk *annot)
+{
+    AnnotInk *ink_annot = static_cast<AnnotInk *>(POPPLER_ANNOT(annot)->annot);
+    return ink_annot->getDrawBelow();
+}
+
+/**
+ * poppler_annot_ink_new:
+ * @doc: a #PopplerDocument
+ * @rect: a #PopplerRectangle
+ *
+ * Creates a new ink annotation that will be
+ * located on @rect when added to a page. See
+ * poppler_page_add_annot()
+ *
+ * Return value: A newly created #PopplerAnnotInk annotation
+ *
+ * Since: 25.03.0
+ */
+PopplerAnnot *poppler_annot_ink_new(PopplerDocument *doc, PopplerRectangle *rect)
+{
+    Annot *annot;
+    PDFRectangle pdf_rect(rect->x1, rect->y1, rect->x2, rect->y2);
+
+    annot = new AnnotInk(doc->doc, &pdf_rect);
+
+    return _poppler_annot_ink_new(annot);
+}
+
+PopplerAnnot *_poppler_annot_ink_new(Annot *annot)
+{
+    PopplerAnnot *poppler_annot;
+
+    poppler_annot = _poppler_create_annot(POPPLER_TYPE_ANNOT_INK, annot);
+
+    return poppler_annot;
 }
