@@ -245,6 +245,23 @@ bool Catalog::initPageList()
         return false;
     }
 
+    // If the current Pages object lacks a Kids array but has a Parent dictionary, traverse up the hierarchy
+    // until a valid Pages object with a Kids array is found.
+    if (!obj.dictLookup("Kids").isArray() && obj.dictLookup("Parent").isDict()) {
+        while (obj.isDict() && obj.dictLookup("Parent").isDict()) {
+            Object parentDictObj = obj.dictLookup("Parent");
+            if (parentDictObj.isDict() && parentDictObj.dictLookup("Kids").isArray()) {
+                const Object &parentRefObj = obj.dictLookupNF("Parent");
+                if (parentRefObj.isRef()) {
+                    pagesRef = parentRefObj.getRef();
+                }
+                obj = std::move(parentDictObj);
+            } else {
+                break;
+            }
+        }
+    }
+
     pages.clear();
     refPageMap.clear();
     attrsList.push_back(std::make_unique<PageAttrs>(nullptr, obj.getDict()));
