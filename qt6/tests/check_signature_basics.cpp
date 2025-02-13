@@ -18,6 +18,9 @@
 #include "SignatureInfo.h"
 #include "CryptoSignBackend.h"
 #include "config.h"
+#ifdef ENABLE_GPGME
+#    include "GPGMECryptoSignBackend.h"
+#endif
 
 class TestSignatureBasics : public QObject
 {
@@ -36,6 +39,7 @@ private Q_SLOTS:
     void testSignatureSizes();
     void testSignerInfo(); // names and stuff
     void testSignedRanges();
+    void testPgp();
 };
 
 void TestSignatureBasics::init()
@@ -173,6 +177,43 @@ void TestSignatureBasics::testSignedRanges()
     QCOMPARE(ranges1[2], 79651);
     QCOMPARE(ranges1[3], 92773);
     QCOMPARE(ranges1[3], size1); // signature does cover all of it
+}
+
+void TestSignatureBasics::testPgp()
+{
+#ifdef ENABLE_GPGME
+    GpgSignatureConfiguration::setPgpSignaturesAllowed(true);
+#endif
+    auto gpgDoc = std::make_unique<PDFDoc>(std::make_unique<GooString>(TESTDATADIR "/unittestcases/some-text-pgp_signed.pdf"));
+    auto signatureFields = gpgDoc->getSignatureFields();
+    QCOMPARE(signatureFields.size(), 1);
+    QCOMPARE(signatureFields[0]->getSignatureType(), CryptoSign::SignatureType::g10c_pgp_signature_detached);
+    QVERIFY(!signatureFields[0]->getSignature().empty());
+    Goffset size0;
+    auto sig0 = signatureFields[0]->getCheckedSignature(&size0);
+    QVERIFY(sig0);
+    auto ranges0 = signatureFields[0]->getSignedRangeBounds();
+    QCOMPARE(ranges0.size(), 4);
+    QCOMPARE(ranges0[0], 0);
+    QCOMPARE(ranges0[1], 82991);
+    QCOMPARE(ranges0[2], 102993);
+    QCOMPARE(ranges0[3], 103534);
+
+    auto siginfo0 = signatureFields[0]->validateSignatureAsync(false, false, -1 /* now */, false, false, {});
+    signatureFields[0]->validateSignatureResult();
+    QFETCH_GLOBAL(CryptoSign::Backend::Type, backend);
+    if (backend == CryptoSign::Backend::Type::GPGME) {
+        QCOMPARE(siginfo0->getSignerName(), std::string { "Sune Vuorela" });
+        QCOMPARE(siginfo0->getHashAlgorithm(), HashAlgorithm::Sha256);
+        QCOMPARE(siginfo0->getCertificateInfo()->getPublicKeyInfo().publicKeyStrength, 4096);
+        QCOMPARE(siginfo0->getCertificateInfo()->getNickName().toStr().substr(32), std::string { "F1F0D3ED" });
+        QCOMPARE(siginfo0->getSignatureValStatus(), SignatureValidationStatus::SIGNATURE_VALID);
+    } else {
+        QCOMPARE(siginfo0->getSignerName(), std::string {});
+        QCOMPARE(siginfo0->getHashAlgorithm(), HashAlgorithm::Unknown);
+        QCOMPARE(siginfo0->getCertificateInfo(), nullptr);
+        QCOMPARE(siginfo0->getSignatureValStatus(), SignatureValidationStatus::SIGNATURE_NOT_VERIFIED);
+    }
 }
 
 QTEST_GUILESS_MAIN(TestSignatureBasics)
