@@ -13,6 +13,7 @@
 // that will have an expiry date, and adding time bombs to unit tests is
 // probably not a good idea.
 #include <QtTest/QTest>
+#include <QTemporaryDir>
 #include "PDFDoc.h"
 #include "GlobalParams.h"
 #include "SignatureInfo.h"
@@ -20,6 +21,7 @@
 #include "config.h"
 #ifdef ENABLE_GPGME
 #    include "GPGMECryptoSignBackend.h"
+#    include <gpgme++/importresult.h>
 #endif
 
 class TestSignatureBasics : public QObject
@@ -29,6 +31,13 @@ public:
     explicit TestSignatureBasics(QObject *parent = nullptr) : QObject(parent) { }
 
     std::unique_ptr<PDFDoc> doc;
+
+    static std::unique_ptr<QTemporaryDir> tmpdir;
+    static void initMain()
+    {
+        tmpdir = std::make_unique<QTemporaryDir>();
+        qputenv("GNUPGHOME", tmpdir->path().toLocal8Bit().data());
+    }
 
 private Q_SLOTS:
     void init();
@@ -41,6 +50,8 @@ private Q_SLOTS:
     void testSignedRanges();
     void testPgp();
 };
+
+std::unique_ptr<QTemporaryDir> TestSignatureBasics::tmpdir;
 
 void TestSignatureBasics::init()
 {
@@ -181,8 +192,20 @@ void TestSignatureBasics::testSignedRanges()
 
 void TestSignatureBasics::testPgp()
 {
+    QFETCH_GLOBAL(CryptoSign::Backend::Type, backend);
 #ifdef ENABLE_GPGME
-    GpgSignatureConfiguration::setPgpSignaturesAllowed(true);
+    if (backend == CryptoSign::Backend::Type::GPGME) {
+        GpgSignatureConfiguration::setPgpSignaturesAllowed(true);
+
+        /* We need to fetch the key from the internet or elsewhere in order to get info about the key
+           Alternatively we could embed it in the code here*/
+        auto ctx = GpgME::Context::create(GpgME::Protocol::OpenPGP);
+        GpgME::Error e;
+        auto result = ctx->importKeys({ std::string { "F1F0D3ED" } });
+        auto key = ctx->key("F1F0D3ED", e);
+        QVERIFY(!e);
+        QCOMPARE(result.numImported(), 1);
+    }
 #endif
     auto gpgDoc = std::make_unique<PDFDoc>(std::make_unique<GooString>(TESTDATADIR "/unittestcases/some-text-pgp_signed.pdf"));
     auto signatureFields = gpgDoc->getSignatureFields();
@@ -201,7 +224,6 @@ void TestSignatureBasics::testPgp()
 
     auto siginfo0 = signatureFields[0]->validateSignatureAsync(false, false, -1 /* now */, false, false, {});
     signatureFields[0]->validateSignatureResult();
-    QFETCH_GLOBAL(CryptoSign::Backend::Type, backend);
     if (backend == CryptoSign::Backend::Type::GPGME) {
         QCOMPARE(siginfo0->getSignerName(), std::string { "Sune Vuorela" });
         QCOMPARE(siginfo0->getHashAlgorithm(), HashAlgorithm::Sha256);
