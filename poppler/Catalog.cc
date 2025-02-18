@@ -246,11 +246,18 @@ bool Catalog::initPageList()
     }
 
     // If the current Pages object lacks a Kids array but has a Parent dictionary, traverse up the hierarchy
-    // until a valid Pages object with a Kids array is found.
+    // until the root Pages object (one without a Parent) is found
     if (!obj.dictLookup("Kids").isArray() && obj.dictLookup("Parent").isDict()) {
+        RefRecursionChecker seen;
         while (obj.isDict() && obj.dictLookup("Parent").isDict()) {
             Object parentDictObj = obj.dictLookup("Parent");
-            if (parentDictObj.isDict() && parentDictObj.dictLookup("Kids").isArray()) {
+
+            if (!seen.insert(pagesRef)) {
+                error(errSyntaxError, -1, "Loop detected in Pages tree (numObj: {0:d})", pagesRef.num);
+                break;
+            }
+
+            if (parentDictObj.isDict()) {
                 const Object &parentRefObj = obj.dictLookupNF("Parent");
                 if (parentRefObj.isRef()) {
                     pagesRef = parentRefObj.getRef();
