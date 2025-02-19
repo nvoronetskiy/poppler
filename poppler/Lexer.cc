@@ -282,7 +282,7 @@ Object Lexer::getObj(int objNum)
                 getChar();
                 continue;
             }
-            if (!isdigit(c)) {
+            if (!fast_is_digit(c)) {
                 break;
             }
             getChar();
