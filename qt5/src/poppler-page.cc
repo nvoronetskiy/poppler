@@ -1,7 +1,7 @@
 /* poppler-page.cc: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
  * Copyright (C) 2005, Brad Hards <bradh@frogmouth.net>
- * Copyright (C) 2005-2022, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2005-2022, 2024, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2005, Stefan Kebekus <stefan.kebekus@math.uni-koeln.de>
  * Copyright (C) 2006-2011, Pino Toscano <pino@kde.org>
  * Copyright (C) 2008 Carlos Garcia Campos <carlosgc@gnome.org>
@@ -28,6 +28,9 @@
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2021 Thomas Huxhorn <thomas.huxhorn@web.de>
  * Copyright (C) 2023 Kevin Ottens <kevin.ottens@enioka.com>. Work sponsored by De Bortoli Wines
+ * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -227,7 +230,7 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
     case actionLaunch: {
         LinkLaunch *e = (LinkLaunch *)a;
         const GooString *p = e->getParams();
-        popplerLink = new LinkExecute(linkArea, e->getFileName()->c_str(), p ? p->c_str() : nullptr);
+        popplerLink = new LinkExecute(linkArea, UnicodeParsedString(e->getFileName()), p ? p->c_str() : nullptr);
     } break;
 
     case actionNamed: {
@@ -317,7 +320,7 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
             reference = lrn->getScreenAnnot();
         }
 
-        popplerLink = new LinkRendition(linkArea, lrn->getMedia() ? lrn->getMedia()->copy() : nullptr, lrn->getOperation(), UnicodeParsedString(lrn->getScript()), reference);
+        popplerLink = new LinkRendition(linkArea, lrn->getMedia() ? lrn->getMedia()->copy() : std::unique_ptr<::MediaRendition> {}, lrn->getOperation(), UnicodeParsedString(lrn->getScript()), reference);
     } break;
 
     case actionOCGState: {
@@ -334,9 +337,39 @@ Link *PageData::convertLinkActionToLink(::LinkAction *a, DocumentData *parentDoc
         popplerLink = new LinkHide(lhp);
     } break;
 
-    case actionResetForm:
-        // Not handled in Qt5 front-end yet
-        break;
+    case actionResetForm: {
+        ::LinkResetForm *lrf = (::LinkResetForm *)a;
+        std::vector<std::string> stdStringFields = lrf->getFields();
+        QStringList qStringFields;
+        for (const std::string &str : stdStringFields) {
+            qStringFields << QString::fromStdString(str);
+        }
+        LinkResetFormPrivate *lrfp = new LinkResetFormPrivate(linkArea, qStringFields, lrf->getExclude());
+        popplerLink = new LinkResetForm(lrfp);
+    } break;
+    case actionSubmitForm: {
+        ::LinkSubmitForm *lsf = (::LinkSubmitForm *)a;
+        const std::vector<std::string> &stdStringFields = lsf->getFields();
+        QVector<int> fieldIds;
+        fieldIds.reserve(stdStringFields.size());
+        Form *form = parentDoc->doc->getCatalog()->getForm();
+        for (const std::string &fieldStr : stdStringFields) {
+            ::FormField *field = form->findFieldByFullyQualifiedNameOrRef(fieldStr);
+            if (field && !field->getNoExport()) {
+                int numWidgets = field->getNumWidgets();
+                for (int i = 0; i < numWidgets; i++) {
+                    ::FormWidget *widget = field->getWidget(i);
+                    if (widget) {
+                        fieldIds.append(field->getWidget(i)->getID());
+                    }
+                }
+            }
+        }
+        QString qStringUrl = QString::fromStdString(lsf->getUrl());
+        LinkSubmitForm::SubmitFormFlags qFlags = static_cast<LinkSubmitForm::SubmitFormFlags>(lsf->getFlags());
+        LinkSubmitFormPrivate *lsfp = new LinkSubmitFormPrivate(linkArea, fieldIds, qStringUrl, qFlags);
+        popplerLink = new LinkSubmitForm(lsfp);
+    } break;
 
     case actionUnknown:
         break;
@@ -646,7 +679,7 @@ QImage Page::thumbnail() const
 QString Page::text(const QRectF &r, TextLayout textLayout) const
 {
     TextOutputDev *output_dev;
-    GooString *s;
+    GooString s;
     QString result;
 
     const bool rawOrder = textLayout == RawOrderLayout;
@@ -654,15 +687,18 @@ QString Page::text(const QRectF &r, TextLayout textLayout) const
     m_page->parentDoc->doc->displayPageSlice(output_dev, m_page->index + 1, 72, 72, 0, false, true, false, -1, -1, -1, -1, nullptr, nullptr, nullptr, nullptr, true);
     if (r.isNull()) {
         const PDFRectangle *rect = m_page->page->getCropBox();
-        s = output_dev->getText(rect->x1, rect->y1, rect->x2, rect->y2);
+        if (orientation() == Orientation::Portrait || orientation() == Orientation::UpsideDown) {
+            s = output_dev->getText(rect->x1, rect->y1, rect->x2, rect->y2);
+        } else {
+            s = output_dev->getText(rect->y1, rect->x1, rect->y2, rect->x2);
+        }
     } else {
         s = output_dev->getText(r.left(), r.top(), r.right(), r.bottom());
     }
 
-    result = QString::fromUtf8(s->c_str());
+    result = QString::fromStdString(s.toStr());
 
     delete output_dev;
-    delete s;
     return result;
 }
 

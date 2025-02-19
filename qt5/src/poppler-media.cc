@@ -1,6 +1,7 @@
 /* poppler-media.cc: qt interface to poppler
  * Copyright (C) 2012 Guillermo A. Amaral B. <gamaral@kde.org>
- * Copyright (C) 2013, 2018, 2021 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2013, 2018, 2021, 2024 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,17 +33,19 @@ namespace Poppler {
 class MediaRenditionPrivate
 {
 public:
-    explicit MediaRenditionPrivate(::MediaRendition *renditionA) : rendition(renditionA) { }
+    explicit MediaRenditionPrivate(std::unique_ptr<::MediaRendition> &&renditionA) : rendition(std::move(renditionA)) { }
 
-    ~MediaRenditionPrivate() { delete rendition; }
+    ~MediaRenditionPrivate() = default;
 
     MediaRenditionPrivate(const MediaRenditionPrivate &) = delete;
     MediaRenditionPrivate &operator=(const MediaRenditionPrivate &) = delete;
 
-    ::MediaRendition *rendition;
+    std::unique_ptr<::MediaRendition> rendition;
 };
 
-MediaRendition::MediaRendition(::MediaRendition *rendition) : d_ptr(new MediaRenditionPrivate(rendition)) { }
+MediaRendition::MediaRendition(::MediaRendition *rendition) : MediaRendition(std::unique_ptr<::MediaRendition>(rendition)) { }
+
+MediaRendition::MediaRendition(std::unique_ptr<::MediaRendition> &&rendition) : d_ptr(new MediaRenditionPrivate(std::move(rendition))) { }
 
 MediaRendition::~MediaRendition()
 {
@@ -86,12 +89,13 @@ QByteArray MediaRendition::data() const
         return QByteArray();
     }
 
+    if (!s->reset()) {
+        return QByteArray();
+    }
     QBuffer buffer;
     unsigned char data[BUFFER_MAX];
     int bread;
-
     buffer.open(QIODevice::WriteOnly);
-    s->reset();
     while ((bread = s->doGetChars(BUFFER_MAX, data)) != 0) {
         buffer.write(reinterpret_cast<const char *>(data), bread);
     }

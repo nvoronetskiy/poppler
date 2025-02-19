@@ -22,6 +22,8 @@
 // Copyright (C) 2016 Alok Anand <alok4nand@gmail.com>
 // Copyright (C) 2016 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -347,11 +349,11 @@ BaseCryptStream::~BaseCryptStream()
     }
 }
 
-void BaseCryptStream::reset()
+bool BaseCryptStream::reset()
 {
     charactersRead = 0;
     nextCharBuff = EOF;
-    str->reset();
+    return str->reset();
 }
 
 Goffset BaseCryptStream::getPos()
@@ -400,11 +402,11 @@ EncryptStream::EncryptStream(Stream *strA, const unsigned char *fileKey, CryptAl
     }
 }
 
-EncryptStream::~EncryptStream() { }
+EncryptStream::~EncryptStream() = default;
 
-void EncryptStream::reset()
+bool EncryptStream::reset()
 {
-    BaseCryptStream::reset();
+    bool baseResult = BaseCryptStream::reset();
 
     switch (algo) {
     case cryptRC4:
@@ -426,6 +428,8 @@ void EncryptStream::reset()
     case cryptNone:
         break;
     }
+
+    return baseResult;
 }
 
 int EncryptStream::lookChar()
@@ -479,12 +483,12 @@ int EncryptStream::lookChar()
 
 DecryptStream::DecryptStream(Stream *strA, const unsigned char *fileKey, CryptAlgorithm algoA, int keyLength, Ref refA) : BaseCryptStream(strA, fileKey, algoA, keyLength, refA) { }
 
-DecryptStream::~DecryptStream() { }
+DecryptStream::~DecryptStream() = default;
 
-void DecryptStream::reset()
+bool DecryptStream::reset()
 {
     int i;
-    BaseCryptStream::reset();
+    bool baseResult = BaseCryptStream::reset();
 
     switch (algo) {
     case cryptRC4:
@@ -508,6 +512,8 @@ void DecryptStream::reset()
     case cryptNone:
         break;
     }
+
+    return baseResult;
 }
 
 int DecryptStream::lookChar()

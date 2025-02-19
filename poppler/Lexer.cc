@@ -13,12 +13,12 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006-2010, 2012-2014, 2017-2019 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2010, 2012-2014, 2017-2019, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Krzysztof Kowalczyk <kkowalczyk@gmail.com>
 // Copyright (C) 2010 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2012, 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
 // Copyright (C) 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 //
@@ -79,7 +79,7 @@ Lexer::Lexer(XRef *xrefA, Stream *str)
     streams->add(curStr.copy());
     strPtr = 0;
     freeArray = true;
-    curStr.streamReset();
+    (void)curStr.streamReset();
 }
 
 Lexer::Lexer(XRef *xrefA, Object *obj)
@@ -99,7 +99,7 @@ Lexer::Lexer(XRef *xrefA, Object *obj)
     if (streams->getLength() > 0) {
         curStr = streams->get(strPtr);
         if (curStr.isStream()) {
-            curStr.streamReset();
+            (void)curStr.streamReset();
         }
     }
 }
@@ -135,7 +135,9 @@ int Lexer::getChar(bool comesFromLook)
             if (strPtr < streams->getLength()) {
                 curStr = streams->get(strPtr);
                 if (curStr.isStream()) {
-                    curStr.streamReset();
+                    if (!curStr.streamReset()) {
+                        return EOF;
+                    }
                 }
             }
         }
@@ -617,7 +619,7 @@ Object Lexer::getObj(const char *cmdA, int objNum)
     comment = false;
     const char *cmd1 = tokBuf;
     *tokBuf = 0;
-    while (strcmp(cmdA, cmd1) && (objNum < 0 || (xref && xref->getNumEntry(getPos()) == objNum))) {
+    while ((strcmp(cmdA, cmd1) != 0) && (objNum < 0 || (xref && xref->getNumEntry(getPos()) == objNum))) {
         while (true) {
             if ((c = getChar()) == EOF) {
                 return Object(objEOF);

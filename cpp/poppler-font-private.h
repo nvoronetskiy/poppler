@@ -2,7 +2,7 @@
  * Copyright (C) 2009, Pino Toscano <pino@kde.org>
  * Copyright (C) 2015, Tamas Szekeres <szekerest@gmail.com>
  * Copyright (C) 2020, Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
- * Copyright (C) 2021, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2021, 2024, 2025, Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,11 +35,13 @@ public:
     font_info_private() : type(font_info::unknown), is_embedded(false), is_subset(false) { }
     explicit font_info_private(FontInfo *fi) : type((font_info::type_enum)fi->getType()), is_embedded(fi->getEmbedded()), is_subset(fi->getSubset())
     {
-        if (fi->getName()) {
-            font_name = fi->getName()->c_str();
+        const std::optional<std::string> &fiName = fi->getName();
+        if (fiName) {
+            font_name = *fiName;
         }
-        if (fi->getFile()) {
-            font_file = fi->getFile()->c_str();
+        const std::optional<std::string> &fiFile = fi->getFile();
+        if (fiFile) {
+            font_file = *fiFile;
         }
 
         ref = fi->getRef();
@@ -60,7 +62,7 @@ class poppler::font_iterator_private
 {
 public:
     font_iterator_private(int start_page, document_private *dd) : font_info_scanner(dd->doc, start_page), total_pages(dd->doc->getNumPages()), current_page((std::max)(start_page, 0)) { }
-    ~font_iterator_private() { }
+    ~font_iterator_private() = default;
 
     FontInfoScanner font_info_scanner;
     int total_pages;

@@ -1,6 +1,7 @@
 /* poppler-sound.cc: qt interface to poppler
  * Copyright (C) 2006-2007, Pino Toscano <pino@kde.org>
  * Copyright (C) 2008, 2018, 2020, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2025, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -81,12 +82,14 @@ QByteArray SoundObject::data() const
     }
 
     Stream *stream = m_soundData->m_soundObj->getStream();
-    stream->reset();
+    if (!stream->reset()) {
+        return QByteArray {};
+    }
     int dataLen = 0;
     QByteArray fileArray;
     int i;
     while ((i = stream->getChar()) != EOF) {
-        fileArray[dataLen] = (char)i;
+        fileArray.append((char)i);
         ++dataLen;
     }
     fileArray.resize(dataLen);

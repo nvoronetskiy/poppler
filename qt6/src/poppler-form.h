@@ -13,7 +13,8 @@
  * Copyright (C) 2020, Thorsten Behrens <Thorsten.Behrens@CIB.de>
  * Copyright (C) 2020, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Theofilos Intzoglou <int.teo@gmail.com>
- * Copyright (C) 2023, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023, 2024, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2024, Pratham Gandhi <ppg.1382@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -451,6 +452,14 @@ public:
      */
     bool canBeSpellChecked() const;
 
+    /**
+      Sets the text inside the Appearance Stream to the specified
+      \p text
+
+      \since 24.08
+     */
+    void setAppearanceChoiceText(const QString &text);
+
 private:
     Q_DISABLE_COPY(FormFieldChoice)
 };
@@ -591,6 +600,13 @@ public:
     bool isSelfSigned() const;
 
     /**
+     * Can be used to do qualified electronic signatures (legally binding)
+     *
+     * https://en.wikipedia.org/wiki/Qualified_electronic_signature
+     */
+    bool isQualified() const;
+
+    /**
       The DER encoded certificate.
      */
     QByteArray certificateData() const;
@@ -651,7 +667,8 @@ public:
         CertificateRevoked, ///< The certificate was revoked by the issuing certificate authority.
         CertificateExpired, ///< The signing time is outside the validity bounds of this certificate.
         CertificateGenericError, ///< The certificate could not be verified.
-        CertificateNotVerified ///< The certificate is not yet verified.
+        CertificateNotVerified, ///< The certificate is not yet verified.
+        CertificateVerificationInProgress ///< The certificate is not yet verified but is in progress in the background. See \ref validateAsync \since 24.05
     };
 
     /**
@@ -740,8 +757,30 @@ public:
 
 private:
     Q_DECLARE_PRIVATE(SignatureValidationInfo)
-
+    friend class FormFieldSignature;
     QSharedPointer<SignatureValidationInfoPrivate> d_ptr;
+};
+
+/**
+ * Object help waiting for some async event
+ *
+ * \since 24.05
+ */
+class AsyncObjectPrivate;
+class POPPLER_QT6_EXPORT AsyncObject : public QObject // clazy:exclude=ctor-missing-parent-argument
+{
+    Q_OBJECT
+public:
+    /* Constructor. On purpose not having a QObject parameter
+       It will be returned by shared_ptr or unique_ptr
+    */
+    AsyncObject();
+    ~AsyncObject() override;
+Q_SIGNALS:
+    void done();
+
+private:
+    std::unique_ptr<AsyncObjectPrivate> d;
 };
 
 /**
@@ -795,8 +834,10 @@ public:
       requiring network access, AIAFetch and OCSP,
       can be toggled individually. In case of the GPG backend, if either
       OCSP is used or AIAFetch is used, the other one is also used.
+
+      \deprecated Please rewrite to the async version, that allows the network traffic part of fetching to happen in the background
      */
-    SignatureValidationInfo validate(ValidateOptions opt) const;
+    POPPLER_QT6_DEPRECATED SignatureValidationInfo validate(ValidateOptions opt) const;
 
     /**
       Validate the signature with @p validationTime as validation time.
@@ -808,17 +849,51 @@ public:
       requiring network access, AIAFetch and OCSP,
       can be toggled individually. In case of the GPG backend, if either
       OCSP is used or AIAFetch is used, the other one is also used.
+
+      \deprecated Please rewrite to the async version, that allows the network traffic part of fetching to happen in the background
      */
-    SignatureValidationInfo validate(int opt, const QDateTime &validationTime) const;
+    POPPLER_QT6_DEPRECATED SignatureValidationInfo validate(int opt, const QDateTime &validationTime) const;
+
+    /**
+      Validate the signature with @p validationTime as validation time.
+
+      Reset signature validatation info of scoped instance.
+
+      \since 24.05
+
+      \note depending on the backend, some options are only
+      partially respected. In case of the NSS backend, the two options
+      requiring network access, AIAFetch and OCSP,
+      can be toggled individually. In case of the GPG backend, if either
+      OCSP is used or AIAFetch is used, the other one is also used.
+
+      \note certificate validation will have started when this function return. See \ref validateResult on how to get certifcate validation
+      \note connections to \ref AsyncObject must happen by the caller
+      before returning control to the event loop, else signals is not guaranteed to be delivered
+    */
+    std::pair<SignatureValidationInfo, std::shared_ptr<AsyncObject>> validateAsync(ValidateOptions opt, const QDateTime &validationTime = {}) const;
+
+    /**
+     * \return the updated signature validation info from validateAsync
+     * \note that this function will block if the result is not yet ready.
+     * Wait for the \ref AsyncObject::done signal to avoid this function blocking on an inconvenient time
+     *
+     * \since 24.05
+     */
+    SignatureValidationInfo::CertificateStatus validateResult() const;
 
     /**
      * \since 22.02
      */
     enum SigningResult
     {
-        FieldAlreadySigned, ///< Trying to sign a field that is already signed
-        GenericSigningError,
-        SigningSuccess
+        FieldAlreadySigned, ///< Trying to sign a field that is already signed \since 24.10
+        GenericSigningError, ///< Unclassified error \since 24.10
+        SigningSuccess, ///< No error \since 24.10
+        InternalError, ///< Unexpected error, likely a bug in poppler \since 24.12
+        KeyMissing, ///< Key not found (Either the input key is not from the list or the available keys has changed underneath \since 24.12)
+        WriteFailed, ///< Write failed (permissions, faulty disk, ...) \since 24.12
+        UserCancelled, ///< User cancelled the process \since 24.12
     };
 
     /**

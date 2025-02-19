@@ -20,6 +20,7 @@
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Adam Reichold <adamreichold@myopera.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -50,7 +51,7 @@
 
 Function::Function() : domain {} { }
 
-Function::~Function() { }
+Function::~Function() = default;
 
 Function *Function::parse(Object *funcObj)
 {
@@ -193,7 +194,7 @@ IdentityFunction::IdentityFunction()
     hasRange = false;
 }
 
-IdentityFunction::~IdentityFunction() { }
+IdentityFunction::~IdentityFunction() = default;
 
 void IdentityFunction::transform(const double *in, double *out) const
 {
@@ -363,10 +364,13 @@ SampledFunction::SampledFunction(Object *funcObj, Dict *dict) : cacheOut {}
         error(errSyntaxError, -1, "Function has invalid number of samples");
         return;
     }
+    if (!str->reset()) {
+        error(errSyntaxError, -1, "Stream reset error");
+        return;
+    }
     buf = 0;
     bits = 0;
     bitMask = (1 << sampleBits) - 1;
-    str->reset();
     for (i = 0; i < nSamples; ++i) {
         if (sampleBits == 8) {
             s = str->getChar();
@@ -622,7 +626,7 @@ ExponentialFunction::ExponentialFunction(Object *funcObj, Dict *dict)
     ok = true;
 }
 
-ExponentialFunction::~ExponentialFunction() { }
+ExponentialFunction::~ExponentialFunction() = default;
 
 ExponentialFunction::ExponentialFunction(const ExponentialFunction *func) : Function(func)
 {
@@ -656,7 +660,6 @@ void ExponentialFunction::transform(const double *in, double *out) const
             }
         }
     }
-    return;
 }
 
 //------------------------------------------------------------------------
@@ -762,7 +765,6 @@ StitchingFunction::StitchingFunction(Object *funcObj, Dict *dict, std::set<int> 
 
     n = funcs[0]->getOutputSize();
     ok = true;
-    return;
 }
 
 StitchingFunction::StitchingFunction(const StitchingFunction *func) : Function(func)
@@ -797,7 +799,7 @@ StitchingFunction::~StitchingFunction()
             }
         }
     }
-    gfree(funcs);
+    gfree(static_cast<void *>(funcs));
     gfree(bounds);
     gfree(encode);
     gfree(scale);
@@ -1108,7 +1110,6 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
     int i;
 
     code = nullptr;
-    codeString = nullptr;
     codeSize = 0;
     ok = false;
 
@@ -1127,10 +1128,13 @@ PostScriptFunction::PostScriptFunction(Object *funcObj, Dict *dict)
         goto err1;
     }
     str = funcObj->getStream();
+    if (!str->reset()) {
+        error(errSyntaxError, -1, "Stream reset error");
+        goto err1;
+    }
 
     //----- parse the function
-    codeString = new GooString();
-    str->reset();
+    codeString = std::make_unique<GooString>();
     if (getToken(str)->cmp("{") != 0) {
         error(errSyntaxError, -1, "Expected '{{' at start of PostScript function");
         goto err1;
@@ -1174,7 +1178,6 @@ PostScriptFunction::PostScriptFunction(const PostScriptFunction *func) : Functio
 PostScriptFunction::~PostScriptFunction()
 {
     gfree(code);
-    delete codeString;
 }
 
 void PostScriptFunction::transform(const double *in, double *out) const

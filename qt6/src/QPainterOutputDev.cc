@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
-// Copyright (C) 2005-2009, 2011, 2012, 2014, 2015, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2009, 2011, 2012, 2014, 2015, 2018, 2019, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2008, 2010 Pino Toscano <pino@kde.org>
 // Copyright (C) 2009, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Petr Gajdos <pgajdos@novell.com>
@@ -27,6 +27,7 @@
 // Copyright (C) 2017, 2022 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -162,10 +163,6 @@ QPainterOutputDev::QPainterOutputDev(QPainter *painter) : m_lastTransparencyGrou
 
 QPainterOutputDev::~QPainterOutputDev()
 {
-    for (auto &codeToGID : m_codeToGIDCache) {
-        gfree(const_cast<int *>(codeToGID.second));
-    }
-
     FT_Done_FreeType(m_ftLibrary);
 }
 
@@ -174,10 +171,9 @@ void QPainterOutputDev::startDoc(PDFDoc *doc)
     xref = doc->getXRef();
     m_doc = doc;
 
-    for (auto &codeToGID : m_codeToGIDCache) {
-        gfree(const_cast<int *>(codeToGID.second));
-    }
     m_codeToGIDCache.clear();
+    m_codeToGIDStack = {};
+    m_codeToGID = nullptr;
 }
 
 void QPainterOutputDev::startPage(int pageNum, GfxState *state, XRef *) { }
@@ -515,7 +511,7 @@ void QPainterOutputDev::updateFont(GfxState *state)
 
     if (codeToGIDIt != m_codeToGIDCache.end()) {
 
-        m_codeToGID = codeToGIDIt->second;
+        m_codeToGID = &codeToGIDIt->second;
 
     } else {
 
@@ -547,16 +543,15 @@ void QPainterOutputDev::updateFont(GfxState *state)
         case fontType1C:
         case fontType1COT: {
             // Load the font face using FreeType
-            const int faceIndex = 0; // We always load the zero-th face from a font
             FT_Face freeTypeFace;
 
             if (fontLoc->locType != gfxFontLocEmbedded) {
-                if (ft_new_face_from_file(m_ftLibrary, fontLoc->path.c_str(), faceIndex, &freeTypeFace)) {
+                if (ft_new_face_from_file(m_ftLibrary, fontLoc->path.c_str(), fontLoc->fontNum, &freeTypeFace)) {
                     error(errSyntaxError, -1, "Couldn't create a FreeType face for '{0:s}'", gfxFont->getName() ? gfxFont->getName()->c_str() : "(unnamed)");
                     return;
                 }
             } else {
-                if (FT_New_Memory_Face(m_ftLibrary, (const FT_Byte *)fontBuffer->data(), fontBuffer->size(), faceIndex, &freeTypeFace)) {
+                if (FT_New_Memory_Face(m_ftLibrary, (const FT_Byte *)fontBuffer->data(), fontBuffer->size(), fontLoc->fontNum, &freeTypeFace)) {
                     error(errSyntaxError, -1, "Couldn't create a FreeType face for '{0:s}'", gfxFont->getName() ? gfxFont->getName()->c_str() : "(unnamed)");
                     return;
                 }
@@ -564,9 +559,9 @@ void QPainterOutputDev::updateFont(GfxState *state)
 
             const char *name;
 
-            int *codeToGID = (int *)gmallocn(256, sizeof(int));
+            std::vector<int> codeToGID;
+            codeToGID.resize(256, 0);
             for (int i = 0; i < 256; ++i) {
-                codeToGID[i] = 0;
                 if ((name = ((const char **)((Gfx8BitFont *)gfxFont.get())->getEncoding())[i])) {
                     codeToGID[i] = (int)FT_Get_Name_Index(freeTypeFace, (char *)name);
                     if (codeToGID[i] == 0) {
@@ -580,74 +575,67 @@ void QPainterOutputDev::updateFont(GfxState *state)
 
             FT_Done_Face(freeTypeFace);
 
-            m_codeToGIDCache[id] = codeToGID;
+            m_codeToGIDCache[id] = std::move(codeToGID);
 
             break;
         }
         case fontTrueType:
         case fontTrueTypeOT: {
-            auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str()) : FoFiTrueType::make(fontBuffer->data(), fontBuffer->size());
+            auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str(), fontLoc->fontNum) : FoFiTrueType::make(fontBuffer->data(), fontBuffer->size(), fontLoc->fontNum);
 
-            m_codeToGIDCache[id] = (ff) ? ((Gfx8BitFont *)gfxFont.get())->getCodeToGIDMap(ff.get()) : nullptr;
+            m_codeToGIDCache[id] = (ff) ? ((Gfx8BitFont *)gfxFont.get())->getCodeToGIDMap(ff.get()) : std::vector<int> {};
 
             break;
         }
         case fontCIDType0:
         case fontCIDType0C: {
-            int *cidToGIDMap = nullptr;
-            int nCIDs = 0;
+            std::vector<int> cidToGIDMap;
 
             // check for a CFF font
             if (!m_useCIDs) {
                 auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? std::unique_ptr<FoFiType1C>(FoFiType1C::load(fontLoc->path.c_str())) : std::unique_ptr<FoFiType1C>(FoFiType1C::make(fontBuffer->data(), fontBuffer->size()));
 
-                cidToGIDMap = (ff) ? ff->getCIDToGIDMap(&nCIDs) : nullptr;
+                cidToGIDMap = (ff) ? ff->getCIDToGIDMap() : std::vector<int> {};
             }
 
-            m_codeToGIDCache[id] = cidToGIDMap;
+            m_codeToGIDCache[id] = std::move(cidToGIDMap);
 
             break;
         }
         case fontCIDType0COT: {
-            int *codeToGID = nullptr;
+            std::vector<int> codeToGID;
+            ;
 
-            if (((GfxCIDFont *)gfxFont.get())->getCIDToGID()) {
-                int codeToGIDLen = ((GfxCIDFont *)gfxFont.get())->getCIDToGIDLen();
-                codeToGID = (int *)gmallocn(codeToGIDLen, sizeof(int));
-                memcpy(codeToGID, ((GfxCIDFont *)gfxFont.get())->getCIDToGID(), codeToGIDLen * sizeof(int));
+            if (((GfxCIDFont *)gfxFont.get())->getCIDToGIDLen() > 0) {
+                codeToGID = ((GfxCIDFont *)gfxFont.get())->getCIDToGID();
             }
 
-            int *cidToGIDMap = nullptr;
-            int nCIDs = 0;
+            std::vector<int> cidToGIDMap;
 
-            if (!codeToGID && !m_useCIDs) {
-                auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str()) : FoFiTrueType::make(fontBuffer->data(), fontBuffer->size());
+            if (codeToGID.empty() && !m_useCIDs) {
+                auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str(), fontLoc->fontNum) : FoFiTrueType::make(fontBuffer->data(), fontBuffer->size(), fontLoc->fontNum);
 
                 if (ff && ff->isOpenTypeCFF()) {
-                    cidToGIDMap = ff->getCIDToGIDMap(&nCIDs);
+                    cidToGIDMap = ff->getCIDToGIDMap();
                 }
             }
 
-            m_codeToGIDCache[id] = codeToGID ? codeToGID : cidToGIDMap;
+            m_codeToGIDCache[id] = !codeToGID.empty() ? codeToGID : cidToGIDMap;
 
             break;
         }
         case fontCIDType2:
         case fontCIDType2OT: {
-            int *codeToGID = nullptr;
-            int codeToGIDLen = 0;
-            if (((GfxCIDFont *)gfxFont.get())->getCIDToGID()) {
-                codeToGIDLen = ((GfxCIDFont *)gfxFont.get())->getCIDToGIDLen();
-                if (codeToGIDLen) {
-                    codeToGID = (int *)gmallocn(codeToGIDLen, sizeof(int));
-                    memcpy(codeToGID, ((GfxCIDFont *)gfxFont.get())->getCIDToGID(), codeToGIDLen * sizeof(int));
-                }
+            std::vector<int> codeToGID;
+            ;
+            if (((GfxCIDFont *)gfxFont.get())->getCIDToGIDLen() > 0) {
+                codeToGID = ((GfxCIDFont *)gfxFont.get())->getCIDToGID();
             } else {
-                auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str()) : FoFiTrueType::make(fontBuffer->data(), fontBuffer->size());
+                auto ff = (fontLoc->locType != gfxFontLocEmbedded) ? FoFiTrueType::load(fontLoc->path.c_str(), fontLoc->fontNum) : FoFiTrueType::make(fontBuffer->data(), fontBuffer->size(), fontLoc->fontNum);
                 if (!ff) {
                     return;
                 }
-                codeToGID = ((GfxCIDFont *)gfxFont.get())->getCodeToGIDMap(ff.get(), &codeToGIDLen);
+                codeToGID = ((GfxCIDFont *)gfxFont.get())->getCodeToGIDMap(ff.get());
             }
 
             m_codeToGIDCache[id] = codeToGID;
@@ -659,7 +647,7 @@ void QPainterOutputDev::updateFont(GfxState *state)
             return;
         }
 
-        m_codeToGID = m_codeToGIDCache[id];
+        m_codeToGID = &m_codeToGIDCache[id];
     }
 }
 
@@ -913,7 +901,7 @@ void QPainterOutputDev::drawChar(GfxState *state, double x, double y, double dx,
     }
 
     if (!(render & 1)) {
-        quint32 glyphIndex = (m_codeToGID) ? m_codeToGID[code] : code;
+        quint32 glyphIndex = (m_codeToGID && code < m_codeToGID->size()) ? m_codeToGID->at(code) : code;
         QPointF glyphPosition = QPointF(x - originX, y - originY);
 
         // QGlyphRun objects can hold an entire sequence of glyphs, and it would possibly
@@ -980,7 +968,10 @@ void QPainterOutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
                                                 1, // numPixelComps
                                                 1 // getBits
     );
-    imgStr->reset();
+    if (!imgStr->reset()) {
+        imgStr->close();
+        return;
+    }
 
     // TODO: Would using QImage::Format_Mono be more efficient here?
     QImage image(width, height, QImage::Format_ARGB32);
@@ -1023,7 +1014,10 @@ void QPainterOutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int
 
     /* TODO: Do we want to cache these? */
     auto imgStr = std::make_unique<ImageStream>(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-    imgStr->reset();
+    if (!imgStr->reset()) {
+        imgStr->close();
+        return;
+    }
 
     image = QImage(width, height, QImage::Format_ARGB32);
     data = reinterpret_cast<unsigned int *>(image.bits());
@@ -1080,10 +1074,14 @@ void QPainterOutputDev::drawSoftMaskedImage(GfxState *state, Object *ref, Stream
 
     /* TODO: Do we want to cache these? */
     auto imgStr = std::make_unique<ImageStream>(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-    imgStr->reset();
+    if (!imgStr->reset()) {
+        return;
+    }
 
     auto maskImageStr = std::make_unique<ImageStream>(maskStr, maskWidth, maskColorMap->getNumPixelComps(), maskColorMap->getBits());
-    maskImageStr->reset();
+    if (!maskImageStr->reset()) {
+        return;
+    }
 
     QImage image(width, height, QImage::Format_ARGB32);
     unsigned int *data = reinterpret_cast<unsigned int *>(image.bits());

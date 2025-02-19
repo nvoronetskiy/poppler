@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2006 Raj Kumar <rkumar@archive.org>
 // Copyright (C) 2006 Paul Walmsley <paul@booyaka.com>
-// Copyright (C) 2006-2010, 2012, 2014-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2010, 2012, 2014-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 David Benjamin <davidben@mit.edu>
 // Copyright (C) 2011 Edward Jiang <ejiang@google.com>
 // Copyright (C) 2012 William Bader <williambader@hotmail.com>
@@ -28,7 +28,8 @@
 // Copyright (C) 2019-2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 // Copyright (C) 2019-2021 Even Rouault <even.rouault@spatialys.com>
-// Copyright (C) 2014 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2024, 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -185,7 +186,7 @@ class JBIG2HuffmanDecoder
 {
 public:
     JBIG2HuffmanDecoder();
-    ~JBIG2HuffmanDecoder();
+    ~JBIG2HuffmanDecoder() = default;
     void setStream(Stream *strA) { str = strA; }
 
     void reset();
@@ -215,8 +216,6 @@ JBIG2HuffmanDecoder::JBIG2HuffmanDecoder()
     byteCounter = 0;
     reset();
 }
-
-JBIG2HuffmanDecoder::~JBIG2HuffmanDecoder() { }
 
 void JBIG2HuffmanDecoder::reset()
 {
@@ -352,7 +351,7 @@ class JBIG2MMRDecoder
 {
 public:
     JBIG2MMRDecoder();
-    ~JBIG2MMRDecoder();
+    ~JBIG2MMRDecoder() = default;
     void setStream(Stream *strA) { str = strA; }
     void reset();
     int get2DCode();
@@ -377,8 +376,6 @@ JBIG2MMRDecoder::JBIG2MMRDecoder()
     byteCounter = 0;
     reset();
 }
-
-JBIG2MMRDecoder::~JBIG2MMRDecoder() { }
 
 void JBIG2MMRDecoder::reset()
 {
@@ -766,7 +763,7 @@ void JBIG2Bitmap::duplicateRow(int yDest, int ySrc)
 
 void JBIG2Bitmap::combine(JBIG2Bitmap *bitmap, int x, int y, unsigned int combOp)
 {
-    int x0, x1, y0, y1, xx, yy;
+    int x0, x1, y0, y1, xx, yy, yyy;
     unsigned char *srcPtr, *destPtr;
     unsigned int src0, src1, src, dest, s1, s2, m1, m2, m3;
     bool oneByte;
@@ -813,14 +810,17 @@ void JBIG2Bitmap::combine(JBIG2Bitmap *bitmap, int x, int y, unsigned int combOp
     oneByte = x0 == ((x1 - 1) & ~7);
 
     for (yy = y0; yy < y1; ++yy) {
-        if (unlikely((y + yy >= h) || (y + yy < 0))) {
+        if (unlikely(checkedAdd(y, yy, &yyy))) {
+            continue;
+        }
+        if (unlikely((yyy >= h) || (yyy < 0))) {
             continue;
         }
 
         // one byte per line -- need to mask both left and right side
         if (oneByte) {
             if (x >= 0) {
-                destPtr = data + (y + yy) * line + (x >> 3);
+                destPtr = data + yyy * line + (x >> 3);
                 srcPtr = bitmap->data + yy * bitmap->line;
                 dest = *destPtr;
                 src1 = *srcPtr;
@@ -843,7 +843,7 @@ void JBIG2Bitmap::combine(JBIG2Bitmap *bitmap, int x, int y, unsigned int combOp
                 }
                 *destPtr = dest;
             } else {
-                destPtr = data + (y + yy) * line;
+                destPtr = data + yyy * line;
                 srcPtr = bitmap->data + yy * bitmap->line + (-x >> 3);
                 dest = *destPtr;
                 src1 = *srcPtr;
@@ -873,7 +873,7 @@ void JBIG2Bitmap::combine(JBIG2Bitmap *bitmap, int x, int y, unsigned int combOp
 
             // left-most byte
             if (x >= 0) {
-                destPtr = data + (y + yy) * line + (x >> 3);
+                destPtr = data + yyy * line + (x >> 3);
                 srcPtr = bitmap->data + yy * bitmap->line;
                 src1 = *srcPtr++;
                 dest = *destPtr;
@@ -897,7 +897,7 @@ void JBIG2Bitmap::combine(JBIG2Bitmap *bitmap, int x, int y, unsigned int combOp
                 *destPtr++ = dest;
                 xx = x0 + 8;
             } else {
-                destPtr = data + (y + yy) * line;
+                destPtr = data + yyy * line;
                 srcPtr = bitmap->data + yy * bitmap->line + (-x >> 3);
                 src1 = *srcPtr++;
                 xx = x0;
@@ -1014,13 +1014,9 @@ JBIG2SymbolDict::~JBIG2SymbolDict()
     for (i = 0; i < size; ++i) {
         delete bitmaps[i];
     }
-    gfree(bitmaps);
-    if (genericRegionStats) {
-        delete genericRegionStats;
-    }
-    if (refinementRegionStats) {
-        delete refinementRegionStats;
-    }
+    gfree(static_cast<void *>(bitmaps));
+    delete genericRegionStats;
+    delete refinementRegionStats;
 }
 
 //------------------------------------------------------------------------
@@ -1065,7 +1061,7 @@ JBIG2PatternDict::~JBIG2PatternDict()
     for (i = 0; i < size; ++i) {
         delete bitmaps[i];
     }
-    gfree(bitmaps);
+    gfree(static_cast<void *>(bitmaps));
 }
 
 //------------------------------------------------------------------------
@@ -1158,15 +1154,16 @@ JBIG2Stream::~JBIG2Stream()
     delete str;
 }
 
-void JBIG2Stream::reset()
+bool JBIG2Stream::reset()
 {
     segments.resize(0);
     globalSegments.resize(0);
+    bool innerReset = true;
 
     // read the globals stream
     if (globalsStream.isStream()) {
         curStr = globalsStream.getStream();
-        curStr->reset();
+        innerReset = innerReset && curStr->reset();
         arithDecoder->setStream(curStr);
         huffDecoder->setStream(curStr);
         mmrDecoder->setStream(curStr);
@@ -1178,7 +1175,7 @@ void JBIG2Stream::reset()
 
     // read the main stream
     curStr = str;
-    curStr->reset();
+    innerReset = innerReset && curStr->reset();
     arithDecoder->setStream(curStr);
     huffDecoder->setStream(curStr);
     mmrDecoder->setStream(curStr);
@@ -1190,6 +1187,8 @@ void JBIG2Stream::reset()
     } else {
         dataPtr = dataEnd = nullptr;
     }
+
+    return innerReset;
 }
 
 void JBIG2Stream::close()
@@ -1866,7 +1865,7 @@ bool JBIG2Stream::readSymbolDictSeg(unsigned int segNum, unsigned int length, un
     for (i = 0; i < numNewSyms; ++i) {
         delete bitmaps[numInputSyms + i];
     }
-    gfree(bitmaps);
+    gfree(static_cast<void *>(bitmaps));
     if (symWidths) {
         gfree(symWidths);
     }
@@ -1893,7 +1892,7 @@ syntaxError:
             delete bitmaps[numInputSyms + i];
         }
     }
-    gfree(bitmaps);
+    gfree(static_cast<void *>(bitmaps));
     if (symWidths) {
         gfree(symWidths);
     }
@@ -2138,7 +2137,7 @@ void JBIG2Stream::readTextRegionSeg(unsigned int segNum, bool imm, bool lossless
     if (huff) {
         symCodeTab = (JBIG2HuffmanTable *)gmallocn_checkoverflow(numSyms + 1, sizeof(JBIG2HuffmanTable));
         if (!symCodeTab) {
-            gfree(syms);
+            gfree(static_cast<void *>(syms));
             return;
         }
         for (i = 0; i < numSyms; ++i) {
@@ -2179,7 +2178,7 @@ void JBIG2Stream::readTextRegionSeg(unsigned int segNum, bool imm, bool lossless
 
     if (!huff) {
         if (!resetIntStats(symCodeLen)) {
-            gfree(syms);
+            gfree(static_cast<void *>(syms));
             return;
         }
         arithDecoder->start();
@@ -2191,7 +2190,7 @@ void JBIG2Stream::readTextRegionSeg(unsigned int segNum, bool imm, bool lossless
     bitmap = readTextRegion(huff, refine, w, h, numInstances, logStrips, numSyms, symCodeTab, symCodeLen, syms, defPixel, combOp, transposed, refCorner, sOffset, huffFSTable, huffDSTable, huffDTTable, huffRDWTable, huffRDHTable,
                             huffRDXTable, huffRDYTable, huffRSizeTable, templ, atx, aty);
 
-    gfree(syms);
+    gfree(static_cast<void *>(syms));
 
     if (bitmap) {
         // combine the region bitmap into the page bitmap
@@ -2219,12 +2218,11 @@ void JBIG2Stream::readTextRegionSeg(unsigned int segNum, bool imm, bool lossless
 
 codeTableError:
     error(errSyntaxError, curStr->getPos(), "Missing code table in JBIG2 text region");
-    gfree(syms);
+    gfree(static_cast<void *>(syms));
     return;
 
 eofError:
     error(errSyntaxError, curStr->getPos(), "Unexpected EOF in JBIG2 stream");
-    return;
 }
 
 std::unique_ptr<JBIG2Bitmap> JBIG2Stream::readTextRegion(bool huff, bool refine, int w, int h, unsigned int numInstances, unsigned int logStrips, int numSyms, const JBIG2HuffmanTable *symCodeTab, unsigned int symCodeLen, JBIG2Bitmap **syms,

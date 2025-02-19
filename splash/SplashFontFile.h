@@ -12,8 +12,9 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
-// Copyright (C) 2008, 2010, 2018 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2018, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -25,6 +26,7 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "SplashTypes.h"
 #include "poppler_private_export.h"
@@ -61,7 +63,7 @@ private:
     int refcnt;
 };
 
-class SplashFontFile
+class POPPLER_PRIVATE_EXPORT SplashFontFile
 {
 public:
     virtual ~SplashFontFile();
@@ -74,7 +76,7 @@ public:
     virtual SplashFont *makeFont(SplashCoord *mat, const SplashCoord *textMat) = 0;
 
     // Get the font file ID.
-    SplashFontFileID *getID() { return id; }
+    const SplashFontFileID &getID() const { return *id; }
 
     // Increment the reference count.
     void incRefCnt();
@@ -86,9 +88,9 @@ public:
     bool doAdjustMatrix;
 
 protected:
-    SplashFontFile(SplashFontFileID *idA, SplashFontSrc *srcA);
+    SplashFontFile(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *srcA);
 
-    SplashFontFileID *id;
+    std::unique_ptr<SplashFontFileID> id;
     SplashFontSrc *src;
     int refCnt;
 

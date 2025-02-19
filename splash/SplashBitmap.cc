@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2009, 2010, 2012, 2015, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2009, 2010, 2012, 2015, 2018, 2019, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2007 Ilmari Heikkinen <ilmari.heikkinen@gmail.com>
 // Copyright (C) 2009 Shen Liang <shenzhuxi@gmail.com>
 // Copyright (C) 2009 Stefan Thomas <thomas@eload24.com>
@@ -53,7 +53,7 @@
 // SplashBitmap
 //------------------------------------------------------------------------
 
-SplashBitmap::SplashBitmap(int widthA, int heightA, int rowPadA, SplashColorMode modeA, bool alphaA, bool topDown, const std::vector<GfxSeparationColorSpace *> *separationListA)
+SplashBitmap::SplashBitmap(int widthA, int heightA, int rowPadA, SplashColorMode modeA, bool alphaA, bool topDown, const std::vector<std::unique_ptr<GfxSeparationColorSpace>> *separationListA)
 {
     width = widthA;
     height = heightA;
@@ -122,10 +122,10 @@ SplashBitmap::SplashBitmap(int widthA, int heightA, int rowPadA, SplashColorMode
     } else {
         alpha = nullptr;
     }
-    separationList = new std::vector<GfxSeparationColorSpace *>();
+    separationList = new std::vector<std::unique_ptr<GfxSeparationColorSpace>>();
     if (separationListA != nullptr) {
-        for (const GfxSeparationColorSpace *separation : *separationListA) {
-            separationList->push_back((GfxSeparationColorSpace *)separation->copy());
+        for (const std::unique_ptr<GfxSeparationColorSpace> &separation : *separationListA) {
+            separationList->push_back(separation->copyAsOwnType());
         }
     }
 }
@@ -160,9 +160,6 @@ SplashBitmap::~SplashBitmap()
         }
     }
     gfree(alpha);
-    for (auto entry : *separationList) {
-        delete entry;
-    }
     delete separationList;
 }
 
@@ -447,13 +444,13 @@ void SplashBitmap::getRGBLine(int yl, SplashColorPtr line)
         m = byteToDbl(col[1]);
         y = byteToDbl(col[2]);
         k = byteToDbl(col[3]);
-        if (separationList->size() > 0) {
+        if (!separationList->empty()) {
             for (std::size_t i = 0; i < separationList->size(); i++) {
                 if (col[i + 4] > 0) {
                     GfxCMYK cmyk;
                     GfxColor input;
                     input.c[0] = byteToCol(col[i + 4]);
-                    GfxSeparationColorSpace *sepCS = (GfxSeparationColorSpace *)((*separationList)[i]);
+                    const std::unique_ptr<GfxSeparationColorSpace> &sepCS = (*separationList)[i];
                     sepCS->getCMYK(&input, &cmyk);
                     col[0] = colToByte(cmyk.c);
                     col[1] = colToByte(cmyk.m);
@@ -500,13 +497,13 @@ void SplashBitmap::getXBGRLine(int yl, SplashColorPtr line, ConversionMode conve
         m = byteToDbl(col[1]);
         y = byteToDbl(col[2]);
         k = byteToDbl(col[3]);
-        if (separationList->size() > 0) {
+        if (!separationList->empty()) {
             for (std::size_t i = 0; i < separationList->size(); i++) {
                 if (col[i + 4] > 0) {
                     GfxCMYK cmyk;
                     GfxColor input;
                     input.c[0] = byteToCol(col[i + 4]);
-                    GfxSeparationColorSpace *sepCS = (GfxSeparationColorSpace *)((*separationList)[i]);
+                    const std::unique_ptr<GfxSeparationColorSpace> &sepCS = (*separationList)[i];
                     sepCS->getCMYK(&input, &cmyk);
                     col[0] = colToByte(cmyk.c);
                     col[1] = colToByte(cmyk.m);
@@ -618,7 +615,7 @@ void SplashBitmap::getCMYKLine(int yl, SplashColorPtr line)
 
     for (int x = 0; x < width; x++) {
         getPixel(x, yl, col);
-        if (separationList->size() > 0) {
+        if (!separationList->empty()) {
             double c, m, y, k;
             c = byteToDbl(col[0]);
             m = byteToDbl(col[1]);
@@ -629,7 +626,7 @@ void SplashBitmap::getCMYKLine(int yl, SplashColorPtr line)
                     GfxCMYK cmyk;
                     GfxColor input;
                     input.c[0] = byteToCol(col[i + 4]);
-                    GfxSeparationColorSpace *sepCS = (GfxSeparationColorSpace *)((*separationList)[i]);
+                    const std::unique_ptr<GfxSeparationColorSpace> &sepCS = (*separationList)[i];
                     sepCS->getCMYK(&input, &cmyk);
                     col[0] = colToByte(cmyk.c);
                     col[1] = colToByte(cmyk.m);

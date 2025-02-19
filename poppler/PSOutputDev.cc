@@ -15,7 +15,7 @@
 //
 // Copyright (C) 2005 Martin Kretzschmar <martink@gnome.org>
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2006-2009, 2011-2013, 2015-2022, 2024 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006-2009, 2011-2013, 2015-2022, 2024, 2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2006 Jeff Muizelaar <jeff@infidigm.net>
 // Copyright (C) 2007, 2008 Brad Hards <bradh@kde.org>
 // Copyright (C) 2008, 2009 Koji Otani <sho@bbr.jp>
@@ -35,10 +35,11 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2018 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2019, 2021 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2019, 2021-2023 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2021-2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020, 2021 Philipp Knechtges <philipp-dev@knechtges.com>
 // Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
-// Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2023, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -84,6 +85,7 @@
 #include "SplashOutputDev.h"
 #include "PSOutputDev.h"
 #include "PDFDoc.h"
+#include "UTF.h"
 
 #ifdef USE_CMS
 #    include <lcms2.h>
@@ -903,15 +905,21 @@ static const PSSubstFont psBase14SubstFonts[14] = { { "Courier", 0.600 },
 struct PST1FontName
 {
     Ref fontFileID;
-    GooString *psName; // PostScript font name used for this
-                       //   embedded font file
+    std::unique_ptr<GooString> psName; // PostScript font name used for this
+                                       //   embedded font file
+
+    // TODO Remove when we decide that not compiling with clang 15 (macos 14) is acceptable
+    PST1FontName(Ref id, std::unique_ptr<GooString> &&name) : fontFileID(id), psName(std::move(name)) { }
 };
 
 // Info for 8-bit fonts
 struct PSFont8Info
 {
     Ref fontID;
-    int *codeToGID; // code-to-GID mapping for TrueType fonts
+    std::vector<int> codeToGID; // code-to-GID mapping for TrueType fonts
+
+    // TODO Remove when we decide that not compiling with clang 15 (macos 14) is acceptable
+    PSFont8Info(Ref id, std::vector<int> &&ctg) : fontID(id), codeToGID(std::move(ctg)) { }
 };
 
 // Encoding info for substitute 16-bit font
@@ -938,31 +946,27 @@ struct PSFont16Enc
 class PSOutCustomColor
 {
 public:
-    PSOutCustomColor(double cA, double mA, double yA, double kA, GooString *nameA);
+    PSOutCustomColor(double cA, double mA, double yA, double kA, std::unique_ptr<GooString> &&nameA);
     ~PSOutCustomColor();
 
     PSOutCustomColor(const PSOutCustomColor &) = delete;
     PSOutCustomColor &operator=(const PSOutCustomColor &) = delete;
 
     double c, m, y, k;
-    GooString *name;
+    const std::unique_ptr<GooString> name;
     PSOutCustomColor *next;
 };
 
-PSOutCustomColor::PSOutCustomColor(double cA, double mA, double yA, double kA, GooString *nameA)
+PSOutCustomColor::PSOutCustomColor(double cA, double mA, double yA, double kA, std::unique_ptr<GooString> &&nameA) : name(std::move(nameA))
 {
     c = cA;
     m = mA;
     y = yA;
     k = kA;
-    name = nameA;
     next = nullptr;
 }
 
-PSOutCustomColor::~PSOutCustomColor()
-{
-    delete name;
-}
+PSOutCustomColor::~PSOutCustomColor() = default;
 
 //------------------------------------------------------------------------
 
@@ -981,7 +985,7 @@ public:
     DeviceNRecoder(Stream *strA, int widthA, int heightA, GfxImageColorMap *colorMapA);
     ~DeviceNRecoder() override;
     StreamKind getKind() const override { return strWeird; }
-    void reset() override;
+    bool reset() override;
     int getChar() override { return (bufIdx >= bufSize && !fillBuf()) ? EOF : buf[bufIdx++]; }
     int lookChar() override { return (bufIdx >= bufSize && !fillBuf()) ? EOF : buf[bufIdx]; }
     GooString *getPSFilter(int psLevel, const char *indent) override { return nullptr; }
@@ -1015,18 +1019,16 @@ DeviceNRecoder::DeviceNRecoder(Stream *strA, int widthA, int heightA, GfxImageCo
 
 DeviceNRecoder::~DeviceNRecoder()
 {
-    if (imgStr) {
-        delete imgStr;
-    }
+    delete imgStr;
     if (str->isEncoder()) {
         delete str;
     }
 }
 
-void DeviceNRecoder::reset()
+bool DeviceNRecoder::reset()
 {
     imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-    imgStr->reset();
+    return imgStr->reset();
 }
 
 bool DeviceNRecoder::fillBuf()
@@ -1079,8 +1081,6 @@ PSOutputDev::PSOutputDev(const char *fileName, PDFDoc *docA, char *psTitleA, con
     customCodeCbk = customCodeCbkA;
     customCodeCbkData = customCodeCbkDataA;
 
-    t1FontNames = nullptr;
-    font8Info = nullptr;
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
@@ -1136,8 +1136,6 @@ PSOutputDev::PSOutputDev(int fdA, PDFDoc *docA, char *psTitleA, const std::vecto
     customCodeCbk = customCodeCbkA;
     customCodeCbkData = customCodeCbkDataA;
 
-    t1FontNames = nullptr;
-    font8Info = nullptr;
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
@@ -1174,8 +1172,6 @@ PSOutputDev::PSOutputDev(FoFiOutputFunc outputFuncA, void *outputStreamA, char *
     customCodeCbk = customCodeCbkA;
     customCodeCbkData = customCodeCbkDataA;
 
-    t1FontNames = nullptr;
-    font8Info = nullptr;
     font16Enc = nullptr;
     imgIDs = nullptr;
     formIDs = nullptr;
@@ -1365,7 +1361,7 @@ void PSOutputDev::postInit()
                 media++;
             }
             if (name.empty()) {
-                name = GooString::format("{0:d}x{1:d}mm", int(w * 25.4 / 72), int(h * 25.4 / 72))->toStr();
+                name = GooString::format("{0:d}x{1:d}mm", int(w * 25.4 / 72), int(h * 25.4 / 72));
             }
             paperSizes.emplace_back(std::move(name), w, h);
         }
@@ -1392,11 +1388,6 @@ void PSOutputDev::postInit()
     for (i = 0; i < 14; ++i) {
         fontNames.emplace(psBase14SubstFonts[i].psName);
     }
-    t1FontNameSize = 64;
-    t1FontNameLen = 0;
-    t1FontNames = (PST1FontName *)gmallocn(t1FontNameSize, sizeof(PST1FontName));
-    font8InfoLen = 0;
-    font8InfoSize = 0;
     font16EncLen = 0;
     font16EncSize = 0;
     imgIDLen = 0;
@@ -1520,26 +1511,10 @@ PSOutputDev::~PSOutputDev()
         }
 #endif
     }
-    if (embFontList) {
-        delete embFontList;
-    }
-    if (t1FontNames) {
-        for (i = 0; i < t1FontNameLen; ++i) {
-            delete t1FontNames[i].psName;
-        }
-        gfree(t1FontNames);
-    }
-    if (font8Info) {
-        for (i = 0; i < font8InfoLen; ++i) {
-            gfree(font8Info[i].codeToGID);
-        }
-        gfree(font8Info);
-    }
+    delete embFontList;
     if (font16Enc) {
         for (i = 0; i < font16EncLen; ++i) {
-            if (font16Enc[i].enc) {
-                delete font16Enc[i].enc;
-            }
+            delete font16Enc[i].enc;
         }
         gfree(font16Enc);
     }
@@ -1569,15 +1544,24 @@ void PSOutputDev::writeHeader(int nPages, const PDFRectangle *mediaBox, const PD
         writePS("%!PS-Adobe-3.0 Resource-Form\n");
         break;
     }
-    writePSFmt("%Produced by poppler pdftops version: {0:s} (http://poppler.freedesktop.org)\n", PACKAGE_VERSION);
     Object info = xref->getDocInfo();
+    std::string creator = GooString::format("poppler pdftops version: {0:s} (http://poppler.freedesktop.org)", PACKAGE_VERSION);
     if (info.isDict()) {
         Object obj1 = info.dictLookup("Creator");
         if (obj1.isString()) {
-            writePS("%%Creator: ");
-            writePSTextLine(obj1.getString());
+            const GooString *pdfCreator = obj1.getString();
+            if (pdfCreator && !pdfCreator->toStr().empty()) {
+                creator.append(". PDF Creator: ");
+                if (hasUnicodeByteOrderMark(pdfCreator->toStr())) {
+                    creator.append(TextStringToUtf8(pdfCreator->toStr()));
+                } else {
+                    creator.append(pdfCreator->toStr());
+                }
+            }
         }
     }
+    writePS("%%Creator: ");
+    writePSTextLine(creator);
     if (title) {
         char *sanitizedTitle = strdup(title);
         for (size_t i = 0; i < strlen(sanitizedTitle); ++i) {
@@ -1894,34 +1878,21 @@ void PSOutputDev::setupResources(Dict *resDict)
 
 void PSOutputDev::setupFonts(Dict *resDict)
 {
-    Ref r;
-    GfxFontDict *gfxFontDict;
-    int i;
-
-    gfxFontDict = nullptr;
-    const Object &obj1 = resDict->lookupNF("Font");
-    if (obj1.isRef()) {
-        Object obj2 = obj1.fetch(xref);
-        if (obj2.isDict()) {
-            r = obj1.getRef();
-            gfxFontDict = new GfxFontDict(xref, &r, obj2.getDict());
-        }
-    } else if (obj1.isDict()) {
-        gfxFontDict = new GfxFontDict(xref, nullptr, obj1.getDict());
-    }
-    if (gfxFontDict) {
-        for (i = 0; i < gfxFontDict->getNumFonts(); ++i) {
-            if (const std::shared_ptr<GfxFont> &font = gfxFontDict->getFont(i)) {
+    Ref fontDictRef;
+    const Object &fontDictObj = resDict->lookup("Font", &fontDictRef);
+    if (fontDictObj.isDict()) {
+        GfxFontDict gfxFontDict(xref, fontDictRef, fontDictObj.getDict());
+        for (int i = 0; i < gfxFontDict.getNumFonts(); ++i) {
+            if (const std::shared_ptr<GfxFont> &font = gfxFontDict.getFont(i)) {
                 setupFont(font.get(), resDict);
             }
         }
-        delete gfxFontDict;
     }
 }
 
 void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
 {
-    GooString *psName;
+    std::unique_ptr<GooString> psName;
     char buf[16];
     bool subst;
     const char *charName;
@@ -1939,13 +1910,12 @@ void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
 
     fontIDs.push_back(*font->getID());
 
-    psName = nullptr;
     xs = ys = 1;
     subst = false;
 
     if (font->getType() == fontType3) {
-        psName = GooString::format("T3_{0:d}_{1:d}", font->getID()->num, font->getID()->gen).release();
-        setupType3Font(font, psName, parentResDict);
+        psName = std::make_unique<GooString>(GooString::format("T3_{0:d}_{1:d}", font->getID()->num, font->getID()->gen));
+        setupType3Font(font, psName.get(), parentResDict);
     } else {
         std::optional<GfxFontLoc> fontLoc = font->locateFont(xref, this);
         if (fontLoc) {
@@ -1954,35 +1924,35 @@ void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
                 switch (fontLoc->fontType) {
                 case fontType1:
                     // this assumes that the PS font name matches the PDF font name
-                    psName = font->getEmbeddedFontName() ? font->getEmbeddedFontName()->copy() : new GooString();
-                    setupEmbeddedType1Font(&fontLoc->embFontID, psName);
+                    psName = font->getEmbeddedFontName() ? font->getEmbeddedFontName()->copy() : std::make_unique<GooString>();
+                    setupEmbeddedType1Font(&fontLoc->embFontID, psName.get());
                     break;
                 case fontType1C:
                     psName = makePSFontName(font, &fontLoc->embFontID);
-                    setupEmbeddedType1CFont(font, &fontLoc->embFontID, psName);
+                    setupEmbeddedType1CFont(font, &fontLoc->embFontID, psName.get());
                     break;
                 case fontType1COT:
                     psName = makePSFontName(font, &fontLoc->embFontID);
-                    setupEmbeddedOpenTypeT1CFont(font, &fontLoc->embFontID, psName);
+                    setupEmbeddedOpenTypeT1CFont(font, &fontLoc->embFontID, psName.get(), fontLoc->fontNum);
                     break;
                 case fontTrueType:
                 case fontTrueTypeOT:
                     psName = makePSFontName(font, font->getID());
-                    setupEmbeddedTrueTypeFont(font, &fontLoc->embFontID, psName);
+                    setupEmbeddedTrueTypeFont(font, &fontLoc->embFontID, psName.get(), fontLoc->fontNum);
                     break;
                 case fontCIDType0C:
                     psName = makePSFontName(font, &fontLoc->embFontID);
-                    setupEmbeddedCIDType0Font(font, &fontLoc->embFontID, psName);
+                    setupEmbeddedCIDType0Font(font, &fontLoc->embFontID, psName.get());
                     break;
                 case fontCIDType2:
                 case fontCIDType2OT:
                     psName = makePSFontName(font, font->getID());
                     //~ should check to see if font actually uses vertical mode
-                    setupEmbeddedCIDTrueTypeFont(font, &fontLoc->embFontID, psName, true);
+                    setupEmbeddedCIDTrueTypeFont(font, &fontLoc->embFontID, psName.get(), true, fontLoc->fontNum);
                     break;
                 case fontCIDType0COT:
                     psName = makePSFontName(font, &fontLoc->embFontID);
-                    setupEmbeddedOpenTypeCFFFont(font, &fontLoc->embFontID, psName);
+                    setupEmbeddedOpenTypeCFFFont(font, &fontLoc->embFontID, psName.get(), fontLoc->fontNum);
                     break;
                 default:
                     break;
@@ -1999,25 +1969,25 @@ void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
                         //~ this won't work -- the PS font name won't match
                         psName = makePSFontName(font, font->getID());
                     }
-                    setupExternalType1Font(fontLoc->pathAsGooString(), psName);
+                    setupExternalType1Font(fontLoc->path, psName.get());
                     break;
                 case fontTrueType:
                 case fontTrueTypeOT:
                     psName = makePSFontName(font, font->getID());
-                    setupExternalTrueTypeFont(font, fontLoc->pathAsGooString(), psName);
+                    setupExternalTrueTypeFont(font, fontLoc->path, psName.get(), fontLoc->fontNum);
                     break;
                 case fontCIDType2:
                 case fontCIDType2OT:
                     psName = makePSFontName(font, font->getID());
                     //~ should check to see if font actually uses vertical mode
-                    setupExternalCIDTrueTypeFont(font, fontLoc->pathAsGooString(), psName, true);
+                    setupExternalCIDTrueTypeFont(font, fontLoc->path, psName.get(), true, fontLoc->fontNum);
                     break;
                 default:
                     break;
                 }
                 break;
             case gfxFontLocResident:
-                psName = new GooString(fontLoc->path);
+                psName = std::make_unique<GooString>(fontLoc->path);
                 break;
             }
         }
@@ -2063,12 +2033,12 @@ void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
     // generate PostScript code to set up the font
     if (font->isCIDFont()) {
         if (level == psLevel3 || level == psLevel3Sep) {
-            writePSFmt("/F{0:d}_{1:d} /{2:t} {3:d} pdfMakeFont16L3\n", font->getID()->num, font->getID()->gen, psName, font->getWMode());
+            writePSFmt("/F{0:d}_{1:d} /{2:t} {3:d} pdfMakeFont16L3\n", font->getID()->num, font->getID()->gen, psName.get(), font->getWMode());
         } else {
-            writePSFmt("/F{0:d}_{1:d} /{2:t} {3:d} pdfMakeFont16\n", font->getID()->num, font->getID()->gen, psName, font->getWMode());
+            writePSFmt("/F{0:d}_{1:d} /{2:t} {3:d} pdfMakeFont16\n", font->getID()->num, font->getID()->gen, psName.get(), font->getWMode());
         }
     } else {
-        writePSFmt("/F{0:d}_{1:d} /{2:t} {3:.6g} {4:.6g}\n", font->getID()->num, font->getID()->gen, psName, xs, ys);
+        writePSFmt("/F{0:d}_{1:d} /{2:t} {3:.6g} {4:.6g}\n", font->getID()->num, font->getID()->gen, psName.get(), xs, ys);
         for (i = 0; i < 256; i += 8) {
             writePS((char *)((i == 0) ? "[ " : "  "));
             for (j = 0; j < 8; ++j) {
@@ -2091,8 +2061,6 @@ void PSOutputDev::setupFont(GfxFont *font, Dict *parentResDict)
         }
         writePS("pdfMakeFont\n");
     }
-
-    delete psName;
 }
 
 void PSOutputDev::setupEmbeddedType1Font(Ref *id, GooString *psName)
@@ -2133,18 +2101,24 @@ void PSOutputDev::setupEmbeddedType1Font(Ref *id, GooString *psName)
     length2 = obj2.getInt();
     length3 = obj3.getInt();
 
+    if (!strObj.streamReset()) {
+        return;
+    }
+
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
     embFontList->append("%%+ font ");
     embFontList->append(psName->c_str());
     embFontList->append("\n");
 
-    strObj.streamReset();
     if (strObj.streamGetChar() == 0x80 && strObj.streamGetChar() == 1) {
         // PFB format
         length1 = strObj.streamGetChar() | (strObj.streamGetChar() << 8) | (strObj.streamGetChar() << 16) | (strObj.streamGetChar() << 24);
     } else {
-        strObj.streamReset();
+        if (!strObj.streamReset()) {
+            error(errSyntaxError, -1, "Failed reset stream");
+            goto err1;
+        }
     }
     // copy ASCII portion of font
     for (i = 0; i < length1 && (c = strObj.streamGetChar()) != EOF; ++i) {
@@ -2262,7 +2236,7 @@ err1:
     }
 }
 
-void PSOutputDev::setupExternalType1Font(const GooString *fileName, GooString *psName)
+void PSOutputDev::setupExternalType1Font(const std::string &fileName, GooString *psName)
 {
     static const char hexChar[17] = "0123456789abcdef";
     FILE *fontFile;
@@ -2279,7 +2253,7 @@ void PSOutputDev::setupExternalType1Font(const GooString *fileName, GooString *p
     embFontList->append("\n");
 
     // copy the font file
-    if (!(fontFile = openFile(fileName->c_str(), "rb"))) {
+    if (!(fontFile = openFile(fileName.c_str(), "rb"))) {
         error(errIO, -1, "Couldn't open external font file");
         return;
     }
@@ -2338,23 +2312,16 @@ void PSOutputDev::setupExternalType1Font(const GooString *fileName, GooString *p
 void PSOutputDev::setupEmbeddedType1CFont(GfxFont *font, Ref *id, GooString *psName)
 {
     FoFiType1C *ffT1C;
-    int i;
 
     // check if font is already embedded
-    for (i = 0; i < t1FontNameLen; ++i) {
-        if (t1FontNames[i].fontFileID == *id) {
+    for (PST1FontName &it : t1FontNames) {
+        if (it.fontFileID == *id) {
             psName->clear();
-            psName->insert(0, t1FontNames[i].psName);
+            psName->insert(0, it.psName.get());
             return;
         }
     }
-    if (t1FontNameLen == t1FontNameSize) {
-        t1FontNameSize *= 2;
-        t1FontNames = (PST1FontName *)greallocn(t1FontNames, t1FontNameSize, sizeof(PST1FontName));
-    }
-    t1FontNames[t1FontNameLen].fontFileID = *id;
-    t1FontNames[t1FontNameLen].psName = psName->copy();
-    ++t1FontNameLen;
+    t1FontNames.emplace_back(*id, psName->copy());
 
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
@@ -2375,25 +2342,17 @@ void PSOutputDev::setupEmbeddedType1CFont(GfxFont *font, Ref *id, GooString *psN
     writePS("%%EndResource\n");
 }
 
-void PSOutputDev::setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id, GooString *psName)
+void PSOutputDev::setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id, GooString *psName, int faceIndex)
 {
-    int i;
-
     // check if font is already embedded
-    for (i = 0; i < t1FontNameLen; ++i) {
-        if (t1FontNames[i].fontFileID == *id) {
+    for (PST1FontName &it : t1FontNames) {
+        if (it.fontFileID == *id) {
             psName->clear();
-            psName->insert(0, t1FontNames[i].psName);
+            psName->insert(0, it.psName.get());
             return;
         }
     }
-    if (t1FontNameLen == t1FontNameSize) {
-        t1FontNameSize *= 2;
-        t1FontNames = (PST1FontName *)greallocn(t1FontNames, t1FontNameSize, sizeof(PST1FontName));
-    }
-    t1FontNames[t1FontNameLen].fontFileID = *id;
-    t1FontNames[t1FontNameLen].psName = psName->copy();
-    ++t1FontNameLen;
+    t1FontNames.emplace_back(*id, psName->copy());
 
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
@@ -2404,7 +2363,7 @@ void PSOutputDev::setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id, GooString
     // convert it to a Type 1 font
     const std::optional<std::vector<unsigned char>> fontBuf = font->readEmbFontFile(xref);
     if (fontBuf) {
-        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size())) {
+        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size(), faceIndex)) {
             if (ffTT->isOpenTypeCFF()) {
                 ffTT->convertToType1(psName->c_str(), nullptr, true, outputFunc, outputStream);
             }
@@ -2415,10 +2374,8 @@ void PSOutputDev::setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id, GooString
     writePS("%%EndResource\n");
 }
 
-void PSOutputDev::setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id, GooString *psName)
+void PSOutputDev::setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id, GooString *psName, int faceIndex)
 {
-    int *codeToGID;
-
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
     embFontList->append("%%+ font ");
@@ -2428,17 +2385,11 @@ void PSOutputDev::setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id, GooString *p
     // convert it to a Type 42 font
     const std::optional<std::vector<unsigned char>> fontBuf = font->readEmbFontFile(xref);
     if (fontBuf) {
-        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size())) {
-            codeToGID = ((Gfx8BitFont *)font)->getCodeToGIDMap(ffTT.get());
+        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size(), faceIndex)) {
+            std::vector<int> codeToGID = ((Gfx8BitFont *)font)->getCodeToGIDMap(ffTT.get());
             ffTT->convertToType42(psName->c_str(), ((Gfx8BitFont *)font)->getHasEncoding() ? ((Gfx8BitFont *)font)->getEncoding() : nullptr, codeToGID, outputFunc, outputStream);
-            if (codeToGID) {
-                if (font8InfoLen >= font8InfoSize) {
-                    font8InfoSize += 16;
-                    font8Info = (PSFont8Info *)greallocn(font8Info, font8InfoSize, sizeof(PSFont8Info));
-                }
-                font8Info[font8InfoLen].fontID = *font->getID();
-                font8Info[font8InfoLen].codeToGID = codeToGID;
-                ++font8InfoLen;
+            if (!codeToGID.empty()) {
+                font8Info.emplace_back(*font->getID(), std::move(codeToGID));
             }
         }
     }
@@ -2447,10 +2398,8 @@ void PSOutputDev::setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id, GooString *p
     writePS("%%EndResource\n");
 }
 
-void PSOutputDev::setupExternalTrueTypeFont(GfxFont *font, const GooString *fileName, GooString *psName)
+void PSOutputDev::setupExternalTrueTypeFont(GfxFont *font, const std::string &fileName, GooString *psName, int faceIndex)
 {
-    int *codeToGID;
-
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
     embFontList->append("%%+ font ");
@@ -2458,17 +2407,11 @@ void PSOutputDev::setupExternalTrueTypeFont(GfxFont *font, const GooString *file
     embFontList->append("\n");
 
     // convert it to a Type 42 font
-    if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::load(fileName->c_str())) {
-        codeToGID = ((Gfx8BitFont *)font)->getCodeToGIDMap(ffTT.get());
+    if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::load(fileName.c_str(), faceIndex)) {
+        std::vector<int> codeToGID = ((Gfx8BitFont *)font)->getCodeToGIDMap(ffTT.get());
         ffTT->convertToType42(psName->c_str(), ((Gfx8BitFont *)font)->getHasEncoding() ? ((Gfx8BitFont *)font)->getEncoding() : nullptr, codeToGID, outputFunc, outputStream);
-        if (codeToGID) {
-            if (font8InfoLen >= font8InfoSize) {
-                font8InfoSize += 16;
-                font8Info = (PSFont8Info *)greallocn(font8Info, font8InfoSize, sizeof(PSFont8Info));
-            }
-            font8Info[font8InfoLen].fontID = *font->getID();
-            font8Info[font8InfoLen].codeToGID = codeToGID;
-            ++font8InfoLen;
+        if (!codeToGID.empty()) {
+            font8Info.emplace_back(*font->getID(), std::move(codeToGID));
         }
     }
 
@@ -2478,18 +2421,18 @@ void PSOutputDev::setupExternalTrueTypeFont(GfxFont *font, const GooString *file
 
 void PSOutputDev::updateFontMaxValidGlyph(GfxFont *font, int maxValidGlyph)
 {
-    if (maxValidGlyph >= 0 && font->getName()) {
-        auto &fontMaxValidGlyph = perFontMaxValidGlyph[*font->getName()];
+    const std::optional<std::string> &fontName = font->getName();
+    if (maxValidGlyph >= 0 && fontName) {
+        auto &fontMaxValidGlyph = perFontMaxValidGlyph[*fontName];
         if (fontMaxValidGlyph < maxValidGlyph) {
             fontMaxValidGlyph = maxValidGlyph;
         }
     }
 }
 
-void PSOutputDev::setupExternalCIDTrueTypeFont(GfxFont *font, const GooString *fileName, GooString *psName, bool needVerticalMetrics)
+void PSOutputDev::setupExternalCIDTrueTypeFont(GfxFont *font, const std::string &fileName, GooString *psName, bool needVerticalMetrics, int faceIndex)
 {
-    int *codeToGID;
-    int codeToGIDLen;
+    std::vector<int> codeToGID;
 
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
@@ -2499,35 +2442,29 @@ void PSOutputDev::setupExternalCIDTrueTypeFont(GfxFont *font, const GooString *f
 
     // convert it to a Type 0 font
     //~ this should use fontNum to load the correct font
-    if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::load(fileName->c_str())) {
+    if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::load(fileName.c_str(), faceIndex)) {
 
         // check for embedding permission
         if (ffTT->getEmbeddingRights() >= 1) {
-            codeToGID = nullptr;
-            codeToGIDLen = 0;
-            if (((GfxCIDFont *)font)->getCIDToGID()) {
-                codeToGIDLen = ((GfxCIDFont *)font)->getCIDToGIDLen();
-                if (codeToGIDLen) {
-                    codeToGID = (int *)gmallocn(codeToGIDLen, sizeof(int));
-                    memcpy(codeToGID, ((GfxCIDFont *)font)->getCIDToGID(), codeToGIDLen * sizeof(int));
-                }
+            if (((GfxCIDFont *)font)->getCIDToGIDLen() > 0) {
+                codeToGID = ((GfxCIDFont *)font)->getCIDToGID();
             } else {
-                codeToGID = ((GfxCIDFont *)font)->getCodeToGIDMap(ffTT.get(), &codeToGIDLen);
+                codeToGID = ((GfxCIDFont *)font)->getCodeToGIDMap(ffTT.get());
             }
             if (ffTT->isOpenTypeCFF()) {
-                ffTT->convertToCIDType0(psName->c_str(), codeToGID, codeToGIDLen, outputFunc, outputStream);
+                ffTT->convertToCIDType0(psName->c_str(), codeToGID, outputFunc, outputStream);
             } else if (level >= psLevel3) {
                 // Level 3: use a CID font
-                ffTT->convertToCIDType2(psName->c_str(), codeToGID, codeToGIDLen, needVerticalMetrics, outputFunc, outputStream);
+                ffTT->convertToCIDType2(psName->c_str(), codeToGID, needVerticalMetrics, outputFunc, outputStream);
             } else {
                 // otherwise: use a non-CID composite font
                 int maxValidGlyph = -1;
-                ffTT->convertToType0(psName->c_str(), codeToGID, codeToGIDLen, needVerticalMetrics, &maxValidGlyph, outputFunc, outputStream);
+                ffTT->convertToType0(psName->c_str(), codeToGID, needVerticalMetrics, &maxValidGlyph, outputFunc, outputStream);
                 updateFontMaxValidGlyph(font, maxValidGlyph);
             }
-            gfree(codeToGID);
         } else {
-            error(errSyntaxError, -1, "TrueType font '{0:s}' does not allow embedding", font->getName() ? font->getName()->c_str() : "(unnamed)");
+            const std::optional<std::string> &fontName = font->getName();
+            error(errSyntaxError, -1, "TrueType font '{0:s}' does not allow embedding", fontName ? fontName->c_str() : "(unnamed)");
         }
     }
 
@@ -2538,23 +2475,16 @@ void PSOutputDev::setupExternalCIDTrueTypeFont(GfxFont *font, const GooString *f
 void PSOutputDev::setupEmbeddedCIDType0Font(GfxFont *font, Ref *id, GooString *psName)
 {
     FoFiType1C *ffT1C;
-    int i;
 
     // check if font is already embedded
-    for (i = 0; i < t1FontNameLen; ++i) {
-        if (t1FontNames[i].fontFileID == *id) {
+    for (PST1FontName &it : t1FontNames) {
+        if (it.fontFileID == *id) {
             psName->clear();
-            psName->insert(0, t1FontNames[i].psName);
+            psName->insert(0, it.psName.get());
             return;
         }
     }
-    if (t1FontNameLen == t1FontNameSize) {
-        t1FontNameSize *= 2;
-        t1FontNames = (PST1FontName *)greallocn(t1FontNames, t1FontNameSize, sizeof(PST1FontName));
-    }
-    t1FontNames[t1FontNameLen].fontFileID = *id;
-    t1FontNames[t1FontNameLen].psName = psName->copy();
-    ++t1FontNameLen;
+    t1FontNames.emplace_back(*id, psName->copy());
 
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
@@ -2568,10 +2498,10 @@ void PSOutputDev::setupEmbeddedCIDType0Font(GfxFont *font, Ref *id, GooString *p
         if ((ffT1C = FoFiType1C::make(fontBuf->data(), fontBuf->size()))) {
             if (level >= psLevel3) {
                 // Level 3: use a CID font
-                ffT1C->convertToCIDType0(psName->c_str(), nullptr, 0, outputFunc, outputStream);
+                ffT1C->convertToCIDType0(psName->c_str(), {}, outputFunc, outputStream);
             } else {
                 // otherwise: use a non-CID composite font
-                ffT1C->convertToType0(psName->c_str(), nullptr, 0, outputFunc, outputStream);
+                ffT1C->convertToType0(psName->c_str(), {}, outputFunc, outputStream);
             }
             delete ffT1C;
         }
@@ -2581,7 +2511,7 @@ void PSOutputDev::setupEmbeddedCIDType0Font(GfxFont *font, Ref *id, GooString *p
     writePS("%%EndResource\n");
 }
 
-void PSOutputDev::setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id, GooString *psName, bool needVerticalMetrics)
+void PSOutputDev::setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id, GooString *psName, bool needVerticalMetrics, int faceIndex)
 {
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
@@ -2592,14 +2522,14 @@ void PSOutputDev::setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id, GooString
     // convert it to a Type 0 font
     const std::optional<std::vector<unsigned char>> fontBuf = font->readEmbFontFile(xref);
     if (fontBuf) {
-        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size())) {
+        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size(), faceIndex)) {
             if (level >= psLevel3) {
                 // Level 3: use a CID font
-                ffTT->convertToCIDType2(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), ((GfxCIDFont *)font)->getCIDToGIDLen(), needVerticalMetrics, outputFunc, outputStream);
+                ffTT->convertToCIDType2(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), needVerticalMetrics, outputFunc, outputStream);
             } else {
                 // otherwise: use a non-CID composite font
                 int maxValidGlyph = -1;
-                ffTT->convertToType0(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), ((GfxCIDFont *)font)->getCIDToGIDLen(), needVerticalMetrics, &maxValidGlyph, outputFunc, outputStream);
+                ffTT->convertToType0(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), needVerticalMetrics, &maxValidGlyph, outputFunc, outputStream);
                 updateFontMaxValidGlyph(font, maxValidGlyph);
             }
         }
@@ -2609,25 +2539,17 @@ void PSOutputDev::setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id, GooString
     writePS("%%EndResource\n");
 }
 
-void PSOutputDev::setupEmbeddedOpenTypeCFFFont(GfxFont *font, Ref *id, GooString *psName)
+void PSOutputDev::setupEmbeddedOpenTypeCFFFont(GfxFont *font, Ref *id, GooString *psName, int faceIndex)
 {
-    int i;
-
     // check if font is already embedded
-    for (i = 0; i < t1FontNameLen; ++i) {
-        if (t1FontNames[i].fontFileID == *id) {
+    for (PST1FontName &it : t1FontNames) {
+        if (it.fontFileID == *id) {
             psName->clear();
-            psName->insert(0, t1FontNames[i].psName);
+            psName->insert(0, it.psName.get());
             return;
         }
     }
-    if (t1FontNameLen == t1FontNameSize) {
-        t1FontNameSize *= 2;
-        t1FontNames = (PST1FontName *)greallocn(t1FontNames, t1FontNameSize, sizeof(PST1FontName));
-    }
-    t1FontNames[t1FontNameLen].fontFileID = *id;
-    t1FontNames[t1FontNameLen].psName = psName->copy();
-    ++t1FontNameLen;
+    t1FontNames.emplace_back(*id, psName->copy());
 
     // beginning comment
     writePSFmt("%%BeginResource: font {0:t}\n", psName);
@@ -2638,14 +2560,14 @@ void PSOutputDev::setupEmbeddedOpenTypeCFFFont(GfxFont *font, Ref *id, GooString
     // convert it to a Type 0 font
     const std::optional<std::vector<unsigned char>> fontBuf = font->readEmbFontFile(xref);
     if (fontBuf) {
-        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size())) {
+        if (std::unique_ptr<FoFiTrueType> ffTT = FoFiTrueType::make(fontBuf->data(), fontBuf->size(), faceIndex)) {
             if (ffTT->isOpenTypeCFF()) {
                 if (level >= psLevel3) {
                     // Level 3: use a CID font
-                    ffTT->convertToCIDType0(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), ((GfxCIDFont *)font)->getCIDToGIDLen(), outputFunc, outputStream);
+                    ffTT->convertToCIDType0(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), outputFunc, outputStream);
                 } else {
                     // otherwise: use a non-CID composite font
-                    ffTT->convertToType0(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), ((GfxCIDFont *)font)->getCIDToGIDLen(), outputFunc, outputStream);
+                    ffTT->convertToType0(psName->c_str(), ((GfxCIDFont *)font)->getCIDToGID(), outputFunc, outputStream);
                 }
             }
         }
@@ -2716,13 +2638,13 @@ void PSOutputDev::setupType3Font(GfxFont *font, GooString *psName, Dict *parentR
             Object charProc = charProcs->getVal(i);
             gfx->display(&charProc);
             if (t3String) {
-                std::unique_ptr<GooString> buf;
+                std::string buf;
                 if (t3Cacheable) {
                     buf = GooString::format("{0:.6g} {1:.6g} {2:.6g} {3:.6g} {4:.6g} {5:.6g} setcachedevice\n", t3WX, t3WY, t3LLX, t3LLY, t3URX, t3URY);
                 } else {
                     buf = GooString::format("{0:.6g} {1:.6g} setcharwidth\n", t3WX, t3WY);
                 }
-                (*outputFunc)(outputStream, buf->c_str(), buf->getLength());
+                (*outputFunc)(outputStream, buf.c_str(), buf.size());
                 (*outputFunc)(outputStream, t3String->c_str(), t3String->getLength());
                 delete t3String;
                 t3String = nullptr;
@@ -2745,28 +2667,29 @@ void PSOutputDev::setupType3Font(GfxFont *font, GooString *psName, Dict *parentR
 
 // Make a unique PS font name, based on the names given in the PDF
 // font object, and an object ID (font file object for
-GooString *PSOutputDev::makePSFontName(GfxFont *font, const Ref *id)
+std::unique_ptr<GooString> PSOutputDev::makePSFontName(GfxFont *font, const Ref *id)
 {
     const GooString *s;
 
     if ((s = font->getEmbeddedFontName())) {
         std::string psName = filterPSName(s->toStr());
         if (fontNames.emplace(psName).second) {
-            return new GooString(std::move(psName));
+            return std::make_unique<GooString>(std::move(psName));
         }
     }
-    if (font->getName()) {
-        std::string psName = filterPSName(*font->getName());
+    const std::optional<std::string> &fontName = font->getName();
+    if (fontName) {
+        std::string psName = filterPSName(*fontName);
         if (fontNames.emplace(psName).second) {
-            return new GooString(std::move(psName));
+            return std::make_unique<GooString>(std::move(psName));
         }
     }
-    GooString *psName = GooString::format("FF{0:d}_{1:d}", id->num, id->gen).release();
+    std::unique_ptr<GooString> psName = std::make_unique<GooString>(GooString::format("FF{0:d}_{1:d}", id->num, id->gen));
     if ((s = font->getEmbeddedFontName())) {
         std::string filteredName = filterPSName(s->toStr());
         psName->append('_')->append(filteredName);
-    } else if (font->getName()) {
-        std::string filteredName = filterPSName(*font->getName());
+    } else if (fontName) {
+        std::string filteredName = filterPSName(*fontName);
         psName->append('_')->append(filteredName);
     }
     fontNames.emplace(psName->toStr());
@@ -2880,7 +2803,10 @@ void PSOutputDev::setupImage(Ref id, Stream *str, bool mask)
     }
 
     // compute image data size
-    str->reset();
+    if (!str->reset()) {
+        delete str;
+        return;
+    }
     col = size = 0;
     do {
         do {
@@ -2923,7 +2849,10 @@ void PSOutputDev::setupImage(Ref id, Stream *str, bool mask)
     str->close();
 
     // write the data into the array
-    str->reset();
+    if (!str->reset()) {
+        delete str;
+        return;
+    }
     for (outer = 0; outer < outerSize; outer++) {
         int innerSize = size > 65535 ? 65535 : size;
 
@@ -3461,7 +3390,7 @@ bool PSOutputDev::checkPageSlice(Page *page, double /*hDPI*/, double /*vDPI*/, i
             } else {
                 isOptimizedGray = false;
             }
-            str0->reset();
+            (void)str0->reset();
             if (useFlate) {
                 if (isOptimizedGray && numComps == 4) {
                     str = new FlateEncoder(new CMYKGrayEncoder(str0));
@@ -3541,14 +3470,14 @@ bool PSOutputDev::checkPageSlice(Page *page, double /*hDPI*/, double /*vDPI*/, i
             } else {
                 str = new ASCII85Encoder(str);
             }
-            str->reset();
+            (void)str->reset();
             if (useBinary) {
                 // Count the bytes to write a document comment
                 int len = 0;
                 while (str->getChar() != EOF) {
                     len++;
                 }
-                str->reset();
+                (void)str->reset();
                 writePSFmt("%%BeginData: {0:d} Binary Bytes\n", len + 6 + 1);
             }
             writePS("image\n");
@@ -4967,7 +4896,7 @@ void PSOutputDev::drawString(GfxState *state, const GooString *s)
 {
     std::shared_ptr<GfxFont> font;
     int wMode;
-    int *codeToGID;
+    std::vector<int> codeToGID;
     GooString *s2;
     double dx, dy, originX, originY;
     const char *p;
@@ -4999,7 +4928,8 @@ void PSOutputDev::drawString(GfxState *state, const GooString *s)
     if (!(font = state->getFont())) {
         return;
     }
-    maxGlyphInt = (font->getName() ? perFontMaxValidGlyph[*font->getName()] : 0);
+    const std::optional<std::string> &fontName = font->getName();
+    maxGlyphInt = (fontName ? perFontMaxValidGlyph[*fontName] : 0);
     if (maxGlyphInt < 0) {
         maxGlyphInt = 0;
     }
@@ -5008,7 +4938,6 @@ void PSOutputDev::drawString(GfxState *state, const GooString *s)
 
     // check for a subtitute 16-bit font
     uMap = nullptr;
-    codeToGID = nullptr;
     if (font->isCIDFont()) {
         for (i = 0; i < font16EncLen; ++i) {
             if (*font->getID() == font16Enc[i].fontID) {
@@ -5023,9 +4952,9 @@ void PSOutputDev::drawString(GfxState *state, const GooString *s)
 
         // check for a code-to-GID map
     } else {
-        for (i = 0; i < font8InfoLen; ++i) {
-            if (*font->getID() == font8Info[i].fontID) {
-                codeToGID = font8Info[i].codeToGID;
+        for (const auto &font8 : font8Info) {
+            if (*font->getID() == font8.fontID) {
+                codeToGID = font8.codeToGID;
                 break;
             }
         }
@@ -5094,7 +5023,7 @@ void PSOutputDev::drawString(GfxState *state, const GooString *s)
                 ++nChars;
             }
         } else {
-            if (!codeToGID || codeToGID[code] >= 0) {
+            if (codeToGID.empty() || codeToGID[code] >= 0) {
                 s2->append((char)code);
                 dxdy[2 * nChars] = dx;
                 dxdy[2 * nChars + 1] = dy;
@@ -5221,7 +5150,6 @@ void PSOutputDev::drawMaskedImage(GfxState *state, Object *ref, Stream *str, int
 
 void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert, bool inlineImg, Stream *str, int width, int height, int len, const int *maskColors, Stream *maskStr, int maskWidth, int maskHeight, bool maskInvert)
 {
-    ImageStream *imgStr;
     unsigned char pixBuf[gfxColorMaxComps];
     GfxGray gray;
     int col, x, y, c, i;
@@ -5238,7 +5166,11 @@ void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert
             // create an array
             str = new FixedLengthEncoder(str, len);
             str = new ASCIIHexEncoder(str);
-            str->reset();
+            if (!str->reset()) {
+                delete str;
+                return;
+            }
+
             col = 0;
             writePS("[<");
             do {
@@ -5286,8 +5218,10 @@ void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert
         if (colorMap) {
 
             // set up to process the data stream
-            imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-            imgStr->reset();
+            ImageStream imgStr { str, width, colorMap->getNumPixelComps(), colorMap->getBits() };
+            if (!imgStr.reset()) {
+                goto end;
+            }
 
             // process the data stream
             i = 0;
@@ -5295,7 +5229,7 @@ void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert
 
                 // write the line
                 for (x = 0; x < width; ++x) {
-                    imgStr->getPixel(pixBuf);
+                    imgStr.getPixel(pixBuf);
                     colorMap->getGray(pixBuf, &gray);
                     grayValue = colToByte(gray);
                     if (useBinary) {
@@ -5322,11 +5256,11 @@ void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert
                 writePSBuf(hexBuf, i);
             }
             str->close();
-            delete imgStr;
-
             // imagemask
         } else {
-            str->reset();
+            if (!str->reset()) {
+                goto end;
+            }
             i = 0;
             for (y = 0; y < height; ++y) {
                 for (x = 0; x < width; x += 8) {
@@ -5357,6 +5291,7 @@ void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert
             str->close();
         }
     }
+end:
 
     if (maskStr && !(maskColors && colorMap)) {
         writePS("pdfImClipEnd\n");
@@ -5365,7 +5300,6 @@ void PSOutputDev::doImageL1(Object *ref, GfxImageColorMap *colorMap, bool invert
 
 void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool invert, bool inlineImg, Stream *str, int width, int height, int len, const int *maskColors, Stream *maskStr, int maskWidth, int maskHeight, bool maskInvert)
 {
-    ImageStream *imgStr;
     unsigned char *lineBuf;
     unsigned char pixBuf[gfxColorMaxComps];
     GfxCMYK cmyk;
@@ -5385,13 +5319,14 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
 
     // scan for all gray
     if (getOptimizeColorSpace()) {
-        ImageStream *imgCheckStr;
-        imgCheckStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-        imgCheckStr->reset();
+        ImageStream imgCheckStr { str, width, colorMap->getNumPixelComps(), colorMap->getBits() };
+        if (!imgCheckStr.reset()) {
+            return;
+        }
         isGray = true;
         for (y = 0; y < height; ++y) {
             for (x = 0; x < width; ++x) {
-                imgCheckStr->getPixel(pixBuf);
+                imgCheckStr.getPixel(pixBuf);
                 colorMap->getCMYK(pixBuf, &cmyk);
                 if (colToByte(cmyk.c) != colToByte(cmyk.m) || colToByte(cmyk.c) != colToByte(cmyk.y)) {
                     isGray = false;
@@ -5400,15 +5335,16 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
                 }
             }
         }
-        imgCheckStr->close();
-        delete imgCheckStr;
+        imgCheckStr.close();
     } else {
         isGray = false;
     }
 
     // set up to process the data stream
-    imgStr = new ImageStream(str, width, colorMap->getNumPixelComps(), colorMap->getBits());
-    imgStr->reset();
+    ImageStream imgStr { str, width, colorMap->getNumPixelComps(), colorMap->getBits() };
+    if (!imgStr.reset()) {
+        return;
+    }
 
     // width, height, matrix, bits per component
     writePSFmt("{0:d} {1:d} 8 [{2:d} 0 0 {3:d} 0 {4:d}] pdfIm1{5:s}{6:s}\n", width, height, width, -height, height, isGray ? "" : "Sep", useBinary ? "Bin" : "");
@@ -5426,7 +5362,7 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
                 checkProcessColor = ((psProcessBlack & processColors) == 0);
             }
             for (x = 0; x < width; ++x) {
-                imgStr->getPixel(pixBuf);
+                imgStr.getPixel(pixBuf);
                 colorMap->getCMYK(pixBuf, &cmyk);
                 g = colToByte(cmyk.c) + colToByte(cmyk.k);
                 if (checkProcessColor && g > 0) {
@@ -5462,7 +5398,7 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
             }
             if (checkProcessColor) {
                 for (x = 0; x < width; ++x) {
-                    imgStr->getPixel(pixBuf);
+                    imgStr.getPixel(pixBuf);
                     colorMap->getCMYK(pixBuf, &cmyk);
                     lineBuf[4 * x + 0] = colToByte(cmyk.c);
                     lineBuf[4 * x + 1] = colToByte(cmyk.m);
@@ -5472,7 +5408,7 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
                 }
             } else {
                 for (x = 0; x < width; ++x) {
-                    imgStr->getPixel(pixBuf);
+                    imgStr.getPixel(pixBuf);
                     colorMap->getCMYK(pixBuf, &cmyk);
                     lineBuf[4 * x + 0] = colToByte(cmyk.c);
                     lineBuf[4 * x + 1] = colToByte(cmyk.m);
@@ -5518,7 +5454,6 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
     }
 
     str->close();
-    delete imgStr;
     gfree(lineBuf);
 
     if (maskStr && !(maskColors && colorMap)) {
@@ -5528,15 +5463,16 @@ void PSOutputDev::doImageL1Sep(Object *ref, GfxImageColorMap *colorMap, bool inv
 
 void PSOutputDev::maskToClippingPath(Stream *maskStr, int maskWidth, int maskHeight, bool maskInvert)
 {
-    ImageStream *imgStr;
     unsigned char *line;
     PSOutImgClipRect *rects0, *rects1, *rectsTmp, *rectsOut;
     int rects0Len, rects1Len, rectsSize, rectsOutLen, rectsOutSize;
     bool emitRect, addRect, extendRect;
     int i, x0, x1, y, maskXor;
 
-    imgStr = new ImageStream(maskStr, maskWidth, 1, 1);
-    imgStr->reset();
+    ImageStream imgStr(maskStr, maskWidth, 1, 1);
+    if (!imgStr.reset()) {
+        return;
+    }
     rects0Len = rects1Len = rectsOutLen = 0;
     rectsSize = rectsOutSize = 64;
     rects0 = (PSOutImgClipRect *)gmallocn(rectsSize, sizeof(PSOutImgClipRect));
@@ -5544,7 +5480,7 @@ void PSOutputDev::maskToClippingPath(Stream *maskStr, int maskWidth, int maskHei
     rectsOut = (PSOutImgClipRect *)gmallocn(rectsOutSize, sizeof(PSOutImgClipRect));
     maskXor = maskInvert ? 1 : 0;
     for (y = 0; y < maskHeight; ++y) {
-        if (!(line = imgStr->getLine())) {
+        if (!(line = imgStr.getLine())) {
             break;
         }
         i = 0;
@@ -5643,7 +5579,6 @@ void PSOutputDev::maskToClippingPath(Stream *maskStr, int maskWidth, int maskHei
     gfree(rectsOut);
     gfree(rects0);
     gfree(rects1);
-    delete imgStr;
     maskStr->close();
 }
 
@@ -5651,7 +5586,6 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
                             bool maskInvert)
 {
     Stream *str2;
-    ImageStream *imgStr;
     unsigned char *line;
     PSOutImgClipRect *rects0, *rects1, *rectsTmp, *rectsOut;
     int rects0Len, rects1Len, rectsSize, rectsOutLen, rectsOutSize;
@@ -5673,15 +5607,17 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
         // can't read the stream twice for inline images -- but masking
         // isn't allowed with inline images anyway
         numComps = colorMap->getNumPixelComps();
-        imgStr = new ImageStream(str, width, numComps, colorMap->getBits());
-        imgStr->reset();
+        ImageStream imgStr(str, width, numComps, colorMap->getBits());
+        if (!imgStr.reset()) {
+            return;
+        }
         rects0Len = rects1Len = 0;
         rectsSize = rectsOutSize = 64;
         rects0 = (PSOutImgClipRect *)gmallocn(rectsSize, sizeof(PSOutImgClipRect));
         rects1 = (PSOutImgClipRect *)gmallocn(rectsSize, sizeof(PSOutImgClipRect));
         rectsOut = (PSOutImgClipRect *)gmallocn(rectsOutSize, sizeof(PSOutImgClipRect));
         for (y = 0; y < height; ++y) {
-            if (!(line = imgStr->getLine())) {
+            if (!(line = imgStr.getLine())) {
                 break;
             }
             i = 0;
@@ -5808,7 +5744,6 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
         gfree(rectsOut);
         gfree(rects0);
         gfree(rects1);
-        delete imgStr;
         str->close();
 
         // explicit masking
@@ -5839,7 +5774,7 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
             } else {
                 str2 = new ASCII85Encoder(str2);
             }
-            str2->reset();
+            (void)str2->reset();
             col = 0;
             writePS((char *)(useASCIIHex ? "[<" : "[<~"));
             do {
@@ -5979,9 +5914,7 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
     if (useCompressed) {
         writePS(s->c_str());
     }
-    if (s) {
-        delete s;
-    }
+    delete s;
 
     if (mode == psModeForm || inType3Char || preloadImagesForms) {
 
@@ -6033,12 +5966,13 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
             } else {
                 // need to read the stream to count characters -- the length
                 // is data-dependent (because of ASCII and LZW/RLE filters)
-                str->reset();
                 n = 0;
-                while ((c = str->getChar()) != EOF) {
-                    ++n;
+                if (str->reset()) {
+                    while ((c = str->getChar()) != EOF) {
+                        ++n;
+                    }
+                    str->close();
                 }
-                str->close();
             }
             // +6/7 for "pdfIm\n" / "pdfImM\n"
             // +8 for newline + trailer
@@ -6056,19 +5990,20 @@ void PSOutputDev::doImageL2(GfxState *state, Object *ref, GfxImageColorMap *colo
         }
 
         // copy the stream data
-        str->reset();
-        i = 0;
-        while ((c = str->getChar()) != EOF) {
-            dataBuf[i++] = c;
-            if (i >= (int)sizeof(dataBuf)) {
-                writePSBuf(dataBuf, i);
-                i = 0;
+        if (str->reset()) {
+            i = 0;
+            while ((c = str->getChar()) != EOF) {
+                dataBuf[i++] = c;
+                if (i >= (int)sizeof(dataBuf)) {
+                    writePSBuf(dataBuf, i);
+                    i = 0;
+                }
             }
+            if (i > 0) {
+                writePSBuf(dataBuf, i);
+            }
+            str->close();
         }
-        if (i > 0) {
-            writePSBuf(dataBuf, i);
-        }
-        str->close();
 
         // add newline and trailer to the end
         writePSChar('\n');
@@ -6150,9 +6085,7 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
         if (maskUseCompressed) {
             maskFilters->append(s);
         }
-        if (s) {
-            delete s;
-        }
+        delete s;
         if (mode == psModeForm || inType3Char || preloadImagesForms) {
             writePSFmt("MaskData_{0:d}_{1:d} pdfMaskInit\n", ref->getRefNum(), ref->getRefGen());
         } else {
@@ -6180,7 +6113,7 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
             }
 
             // copy the stream data
-            maskStr->reset();
+            (void)maskStr->reset();
             while ((c = maskStr->getChar()) != EOF) {
                 writePSChar(c);
             }
@@ -6220,7 +6153,7 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
             } else {
                 str2 = new ASCII85Encoder(str2);
             }
-            str2->reset();
+            (void)str2->reset();
             col = 0;
             writePS((char *)(useASCIIHex ? "[<" : "[<~"));
             do {
@@ -6371,9 +6304,7 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
     if (useCompressed) {
         writePS(s->c_str());
     }
-    if (s) {
-        delete s;
-    }
+    delete s;
 
     // end of image (data) dictionary
     writePS(">>\n");
@@ -6453,11 +6384,12 @@ void PSOutputDev::doImageL3(GfxState *state, Object *ref, GfxImageColorMap *colo
         }
 
         // copy the stream data
-        str->reset();
-        while ((c = str->getChar()) != EOF) {
-            writePSChar(c);
+        if (str->reset()) {
+            while ((c = str->getChar()) != EOF) {
+                writePSChar(c);
+            }
+            str->close();
         }
-        str->close();
 
         // add newline and trailer to the end
         writePSChar('\n');
@@ -6598,25 +6530,25 @@ void PSOutputDev::dumpColorSpaceL2(GfxState *state, GfxColorSpace *colorSpace, b
         Ref ref = iccBasedCS->getRef();
         const bool validref = ref != Ref::INVALID();
         int intent = state->getCmsRenderingIntent();
-        std::unique_ptr<GooString> name;
+        std::string name;
         if (validref) {
             name = GooString::format("ICCBased-{0:d}-{1:d}-{2:d}", ref.num, ref.gen, intent);
         } else {
             const unsigned long long hash = std::hash<GfxLCMSProfilePtr> {}(iccBasedCS->getProfile());
             name = GooString::format("ICCBased-hashed-{0:ullX}-{1:d}", hash, intent);
         }
-        const auto &it = iccEmitted.find(name->toStr());
+        const auto &it = iccEmitted.find(name);
         if (it != iccEmitted.end()) {
-            writePSFmt("{0:t}", name.get());
+            writePSFmt("{0:s}", name.c_str());
             if (genXform) {
                 writePS(" {}");
             }
         } else {
             char *csa = iccBasedCS->getPostScriptCSA();
             if (csa) {
-                writePSFmt("userdict /{0:t} {1:s} put\n", name.get(), csa);
-                iccEmitted.emplace(name->toStr());
-                writePSFmt("{0:t}", name.get());
+                writePSFmt("userdict /{0:s} {1:s} put\n", name.c_str(), csa);
+                iccEmitted.emplace(name);
+                writePSFmt("{0:s}", name.c_str());
                 if (genXform) {
                     writePS(" {}");
                 }
@@ -6747,6 +6679,7 @@ void PSOutputDev::dumpColorSpaceL2(GfxState *state, GfxColorSpace *colorSpace, b
         break;
 
     case csPattern:
+    case csDeviceRGBA:
         //~ unimplemented
         break;
     }
@@ -7109,11 +7042,12 @@ void PSOutputDev::psXObject(Stream *psStream, Stream *level1Stream)
     } else {
         str = psStream;
     }
-    str->reset();
-    while ((c = str->getChar()) != EOF) {
-        writePSChar(c);
+    if (str->reset()) {
+        while ((c = str->getChar()) != EOF) {
+            writePSChar(c);
+        }
+        str->close();
     }
-    str->close();
 }
 
 //~ can nextFunc be reset to 0 -- maybe at the start of each page?
@@ -7318,8 +7252,8 @@ void PSOutputDev::writePSFmt(const char *fmt, ...)
     if (t3String) {
         t3String->appendfv((char *)fmt, args);
     } else {
-        const std::unique_ptr<GooString> buf = GooString::formatv((char *)fmt, args);
-        (*outputFunc)(outputStream, buf->c_str(), buf->getLength());
+        const std::string buf = GooString::formatv((char *)fmt, args);
+        (*outputFunc)(outputStream, buf.c_str(), buf.size());
     }
     va_end(args);
 }
@@ -7444,8 +7378,8 @@ GooString *PSOutputDev::filterPSLabel(GooString *label, bool *needParens)
         } else if (c == '(') {
             label2->append("\\(");
         } else if (c < 0x20 || c > 0x7e) {
-            std::unique_ptr<GooString> aux = GooString::format("\\{0:03o}", c);
-            label2->append(aux.get());
+            std::string aux = GooString::format("\\{0:03o}", c);
+            label2->append(aux);
             j += 4;
         } else {
             label2->append(c);
@@ -7459,9 +7393,10 @@ GooString *PSOutputDev::filterPSLabel(GooString *label, bool *needParens)
 }
 
 // Write a DSC-compliant <textline>.
-void PSOutputDev::writePSTextLine(const GooString *s)
+void PSOutputDev::writePSTextLine(const std::string &s)
 {
-    int i, j, step;
+    std::size_t i;
+    int j, step;
     int c;
 
     // - DSC comments must be printable ASCII; control chars and
@@ -7471,15 +7406,15 @@ void PSOutputDev::writePSTextLine(const GooString *s)
     //   for the keyword, which was emitted by the caller)
     // - lines that start with a left paren are treated as <text>
     //   instead of <textline>, so we escape a leading paren
-    if (s->getLength() >= 2 && (s->getChar(0) & 0xff) == 0xfe && (s->getChar(1) & 0xff) == 0xff) {
+    if (s.starts_with(unicodeByteOrderMark)) {
         i = 3;
         step = 2;
     } else {
         i = 0;
         step = 1;
     }
-    for (j = 0; i < s->getLength() && j < 200; i += step) {
-        c = s->getChar(i) & 0xff;
+    for (j = 0; i < s.size() && j < 200; i += step) {
+        c = s[i] & 0xff;
         if (c == '\\') {
             writePS("\\\\");
             j += 2;

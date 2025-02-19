@@ -16,7 +16,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Dominic Lachowicz <cinamod@hotmail.com>
-// Copyright (C) 2007-2008, 2010, 2011, 2017-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2008, 2010, 2011, 2017-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Jan Jockusch <jan@jockusch.de>
 // Copyright (C) 2010, 2013 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Kenneth Berland <ken@hero.com>
@@ -274,7 +274,7 @@ int main(int argc, char *argv[])
         if (!strcmp(p, ".pdf") || !strcmp(p, ".PDF")) {
             textFileName = std::make_unique<GooString>(fileName.c_str(), fileName.getLength() - 4);
         } else {
-            textFileName.reset(fileName.copy());
+            textFileName = fileName.copy();
         }
         textFileName->append(htmlMeta ? ".html" : ".txt");
     }
@@ -301,7 +301,7 @@ int main(int argc, char *argv[])
                 return 2;
             }
         }
-        fputs("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">", f);
+        fputs(R"(<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">)", f);
         fputs("<html xmlns=\"http://www.w3.org/1999/xhtml\">\n", f);
         fputs("<head>\n", f);
         info = doc->getDocInfo();
@@ -312,13 +312,13 @@ int main(int argc, char *argv[])
             } else {
                 fputs("<title></title>\n", f);
             }
-            printInfoString(f, info.getDict(), "Subject", "<meta name=\"Subject\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Keywords", "<meta name=\"Keywords\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Author", "<meta name=\"Author\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Creator", "<meta name=\"Creator\" content=\"", "\"/>\n", uMap);
-            printInfoString(f, info.getDict(), "Producer", "<meta name=\"Producer\" content=\"", "\"/>\n", uMap);
-            printInfoDate(f, info.getDict(), "CreationDate", "<meta name=\"CreationDate\" content=\"", "\"/>\n");
-            printInfoDate(f, info.getDict(), "ModDate", "<meta name=\"ModDate\" content=\"", "\"/>\n");
+            printInfoString(f, info.getDict(), "Subject", R"(<meta name="Subject" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Keywords", R"(<meta name="Keywords" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Author", R"(<meta name="Author" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Creator", R"(<meta name="Creator" content=")", "\"/>\n", uMap);
+            printInfoString(f, info.getDict(), "Producer", R"(<meta name="Producer" content=")", "\"/>\n", uMap);
+            printInfoDate(f, info.getDict(), "CreationDate", R"(<meta name="CreationDate" content=")", "\"/>\n");
+            printInfoDate(f, info.getDict(), "ModDate", R"(<meta name="ModDate" content=")", "\"/>\n");
         }
         fputs("</head>\n", f);
         fputs("<body>\n", f);

@@ -2,14 +2,13 @@
 //
 // DateInfo.cc
 //
-// Copyright (C) 2008, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2018, 2019, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2015 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright (C) 2015 André Esser <bepandre@hotmail.com>
 // Copyright (C) 2016, 2018, 2021 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
-// Copyright (C) 2021 Albert Astals Cid <aacid@kde.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 // Copyright (C) 2024 Erich E. Hoover <erich.e.hoover@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
@@ -27,8 +26,8 @@
 
 #include <config.h>
 
-#include "glibc.h"
-#include "gmem.h"
+#include "goo/glibc.h"
+#include "goo/gmem.h"
 #include "DateInfo.h"
 #include "UTF.h"
 
@@ -115,7 +114,7 @@ std::string timeToStringWithFormat(const time_t *timeA, const char *format)
         fmt.replace(timeOffsetPosition, sizeof(timeOffsetPattern) - 1, timeOffset);
     }
 
-    if (fmt.length() == 0) {
+    if (fmt.empty()) {
         return "";
     }
     size_t bufLen = 50;
@@ -126,9 +125,9 @@ std::string timeToStringWithFormat(const time_t *timeA, const char *format)
     return buf;
 }
 
-GooString *timeToDateString(const time_t *timeA)
+std::unique_ptr<GooString> timeToDateString(const time_t *timeA)
 {
-    return new GooString(timeToStringWithFormat(timeA, "D:%Y%m%d%H%M%S%z"));
+    return std::make_unique<GooString>(timeToStringWithFormat(timeA, "D:%Y%m%d%H%M%S%z"));
 }
 
 // Convert PDF date string to time. Returns -1 if conversion fails.

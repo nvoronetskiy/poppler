@@ -13,10 +13,11 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2010, 2012, 2015, 2017, 2018, 2020-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2010, 2012, 2015, 2017, 2018, 2020-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2014 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2016 Alok Anand <alok4nand@gmail.com>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -25,7 +26,7 @@
 
 #include <config.h>
 
-#include "GooString.h"
+#include "goo/GooString.h"
 #include "PDFDoc.h"
 #include "Decrypt.h"
 #include "Error.h"
@@ -60,7 +61,7 @@ SecurityHandler::SecurityHandler(PDFDoc *docA)
     doc = docA;
 }
 
-SecurityHandler::~SecurityHandler() { }
+SecurityHandler::~SecurityHandler() = default;
 
 bool SecurityHandler::checkEncryption(const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword)
 {
@@ -92,37 +93,20 @@ bool SecurityHandler::checkEncryption(const std::optional<GooString> &ownerPassw
 class StandardAuthData
 {
 public:
-    StandardAuthData(GooString *ownerPasswordA, GooString *userPasswordA)
-    {
-        ownerPassword = ownerPasswordA;
-        userPassword = userPasswordA;
-    }
+    StandardAuthData(std::unique_ptr<GooString> &&ownerPasswordA, std::unique_ptr<GooString> &&userPasswordA) : ownerPassword(std::move(ownerPasswordA)), userPassword(std::move(userPasswordA)) { }
 
-    ~StandardAuthData()
-    {
-        if (ownerPassword) {
-            delete ownerPassword;
-        }
-        if (userPassword) {
-            delete userPassword;
-        }
-    }
+    ~StandardAuthData() = default;
 
     StandardAuthData(const StandardAuthData &) = delete;
     StandardAuthData &operator=(const StandardAuthData &) = delete;
 
-    GooString *ownerPassword;
-    GooString *userPassword;
+    const std::unique_ptr<GooString> ownerPassword;
+    const std::unique_ptr<GooString> userPassword;
 };
 
 StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA, Object *encryptDictA) : SecurityHandler(docA)
 {
     ok = false;
-    fileID = nullptr;
-    ownerKey = nullptr;
-    userKey = nullptr;
-    ownerEnc = nullptr;
-    userEnc = nullptr;
     fileKeyLength = 0;
     encAlgorithm = cryptNone;
 
@@ -217,17 +201,17 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA, Object *encryptDi
                     if (fileIDObj1.isString()) {
                         fileID = fileIDObj1.getString()->copy();
                     } else {
-                        fileID = new GooString();
+                        fileID = std::make_unique<GooString>();
                     }
                 } else {
-                    fileID = new GooString();
+                    fileID = std::make_unique<GooString>();
                 }
                 if (fileKeyLength > 16 || fileKeyLength < 0) {
                     fileKeyLength = 16;
                 }
                 ok = true;
             } else if (encVersion == 5 && (encRevision == 5 || encRevision == 6)) {
-                fileID = new GooString(); // unused for V=R=5
+                fileID = std::make_unique<GooString>(); // unused for V=R=5
                 if (ownerEncObj.isString() && userEncObj.isString()) {
                     ownerEnc = ownerEncObj.getString()->copy();
                     userEnc = userEncObj.getString()->copy();
@@ -263,24 +247,7 @@ StandardSecurityHandler::StandardSecurityHandler(PDFDoc *docA, Object *encryptDi
     }
 }
 
-StandardSecurityHandler::~StandardSecurityHandler()
-{
-    if (fileID) {
-        delete fileID;
-    }
-    if (ownerKey) {
-        delete ownerKey;
-    }
-    if (userKey) {
-        delete userKey;
-    }
-    if (ownerEnc) {
-        delete ownerEnc;
-    }
-    if (userEnc) {
-        delete userEnc;
-    }
-}
+StandardSecurityHandler::~StandardSecurityHandler() = default;
 
 bool StandardSecurityHandler::isUnencrypted() const
 {
@@ -292,7 +259,7 @@ bool StandardSecurityHandler::isUnencrypted() const
 
 void *StandardSecurityHandler::makeAuthData(const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword)
 {
-    return new StandardAuthData(ownerPassword ? ownerPassword->copy() : nullptr, userPassword ? userPassword->copy() : nullptr);
+    return new StandardAuthData(ownerPassword ? ownerPassword->copy() : std::make_unique<GooString>(), userPassword ? userPassword->copy() : std::make_unique<GooString>());
 }
 
 void StandardSecurityHandler::freeAuthData(void *authData)
@@ -308,13 +275,13 @@ bool StandardSecurityHandler::authorize(void *authData)
         return false;
     }
     if (authData) {
-        ownerPassword = ((StandardAuthData *)authData)->ownerPassword;
-        userPassword = ((StandardAuthData *)authData)->userPassword;
+        ownerPassword = ((StandardAuthData *)authData)->ownerPassword.get();
+        userPassword = ((StandardAuthData *)authData)->userPassword.get();
     } else {
         ownerPassword = nullptr;
         userPassword = nullptr;
     }
-    if (!Decrypt::makeFileKey(encVersion, encRevision, fileKeyLength, ownerKey, userKey, ownerEnc, userEnc, permFlags, fileID, ownerPassword, userPassword, fileKey, encryptMetadata, &ownerPasswordOk)) {
+    if (!Decrypt::makeFileKey(encVersion, encRevision, fileKeyLength, ownerKey.get(), userKey.get(), ownerEnc.get(), userEnc.get(), permFlags, fileID.get(), ownerPassword, userPassword, fileKey, encryptMetadata, &ownerPasswordOk)) {
         return false;
     }
     return true;

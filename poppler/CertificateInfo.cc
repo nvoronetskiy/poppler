@@ -8,7 +8,7 @@
 // Copyright 2018, 2019, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -17,7 +17,7 @@
 #include <cstring>
 #include <cstdlib>
 
-X509CertificateInfo::X509CertificateInfo() : ku_extensions(KU_NONE), cert_version(-1), is_self_signed(false), keyLocation(KeyLocation::Unknown) { }
+X509CertificateInfo::X509CertificateInfo() : ku_extensions(KU_NONE), cert_version(-1), is_qualified(false), is_self_signed(false), keyLocation(KeyLocation::Unknown) { }
 
 X509CertificateInfo::~X509CertificateInfo() = default;
 
@@ -128,4 +128,14 @@ KeyLocation X509CertificateInfo::getKeyLocation() const
 void X509CertificateInfo::setKeyLocation(KeyLocation location)
 {
     keyLocation = location;
+}
+
+bool X509CertificateInfo::isQualified() const
+{
+    return is_qualified;
+}
+
+void X509CertificateInfo::setQualified(bool qualified)
+{
+    is_qualified = qualified;
 }

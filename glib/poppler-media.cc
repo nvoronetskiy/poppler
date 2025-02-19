@@ -1,6 +1,7 @@
 /* poppler-media.cc: glib interface to MediaRendition
  *
  * Copyright (C) 2010 Carlos Garcia Campos <carlosgc@gnome.org>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -356,7 +357,9 @@ gboolean poppler_media_save_to_callback(PopplerMedia *poppler_media, PopplerMedi
     g_return_val_if_fail(poppler_media->stream.isStream(), FALSE);
 
     stream = poppler_media->stream.getStream();
-    stream->reset();
+    if (!stream->reset()) {
+        return FALSE;
+    }
 
     do {
         int data;

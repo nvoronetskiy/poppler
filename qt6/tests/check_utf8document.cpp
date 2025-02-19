@@ -1,4 +1,4 @@
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include "PDFDoc.h"
 #include "GlobalParams.h"
@@ -21,7 +21,7 @@ inline QString outlineItemTitle(OutlineItem *item)
         return {};
     }
     const std::vector<Unicode> &title = item->getTitle();
-    return QString::fromUcs4(title.data(), title.size());
+    return QString::fromUcs4(reinterpret_cast<const char32_t *>(title.data()), title.size());
 }
 
 void TestUtf8Document::checkStrings()

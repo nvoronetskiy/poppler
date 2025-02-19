@@ -28,13 +28,13 @@
 
 NavigationToolBar::NavigationToolBar(QWidget *parent) : QToolBar(parent)
 {
-    m_firstAct = addAction(tr("First"), this, SLOT(slotGoFirst()));
-    m_prevAct = addAction(tr("Previous"), this, SLOT(slotGoPrev()));
+    m_firstAct = addAction(tr("First"), this, &NavigationToolBar::slotGoFirst);
+    m_prevAct = addAction(tr("Previous"), this, &NavigationToolBar::slotGoPrev);
     m_pageCombo = new QComboBox(this);
     connect(m_pageCombo, &QComboBox::activated, this, &NavigationToolBar::slotComboActivated);
     addWidget(m_pageCombo);
-    m_nextAct = addAction(tr("Next"), this, SLOT(slotGoNext()));
-    m_lastAct = addAction(tr("Last"), this, SLOT(slotGoLast()));
+    m_nextAct = addAction(tr("Next"), this, &NavigationToolBar::slotGoNext);
+    m_lastAct = addAction(tr("Last"), this, &NavigationToolBar::slotGoLast);
 
     addSeparator();
 
@@ -68,7 +68,7 @@ NavigationToolBar::NavigationToolBar(QWidget *parent) : QToolBar(parent)
     documentClosed();
 }
 
-NavigationToolBar::~NavigationToolBar() { }
+NavigationToolBar::~NavigationToolBar() = default;
 
 void NavigationToolBar::documentLoaded()
 {

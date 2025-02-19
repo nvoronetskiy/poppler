@@ -19,6 +19,7 @@
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -147,7 +148,7 @@ SplashFTFont::SplashFTFont(SplashFTFontFile *fontFileA, SplashCoord *matA, const
     isOk = true;
 }
 
-SplashFTFont::~SplashFTFont() { }
+SplashFTFont::~SplashFTFont() = default;
 
 bool SplashFTFont::getGlyph(int c, int xFrac, int yFrac, SplashGlyphBitmap *bitmap, int x0, int y0, SplashClip *clip, SplashClipResult *clipRes)
 {
@@ -206,7 +207,7 @@ bool SplashFTFont::makeGlyph(int c, int xFrac, int yFrac, SplashGlyphBitmap *bit
     FT_Set_Transform(ff->face, &matrix, &offset);
     slot = ff->face->glyph;
 
-    if (ff->codeToGID && c < ff->codeToGIDLen && c >= 0) {
+    if (c < int(ff->codeToGID.size()) && c >= 0) {
         gid = (FT_UInt)ff->codeToGID[c];
     } else {
         gid = (FT_UInt)c;
@@ -285,7 +286,7 @@ double SplashFTFont::getGlyphAdvance(int c)
     ff->face->size = sizeObj;
     FT_Set_Transform(ff->face, &identityMatrix, &offset);
 
-    if (ff->codeToGID && c < ff->codeToGIDLen) {
+    if (c < int(ff->codeToGID.size())) {
         gid = (FT_UInt)ff->codeToGID[c];
     } else {
         gid = (FT_UInt)c;
@@ -310,10 +311,10 @@ SplashPath *SplashFTFont::getGlyphPath(int c)
 {
     static const FT_Outline_Funcs outlineFuncs = {
 #if FREETYPE_MINOR <= 1
-        (int (*)(FT_Vector *, void *)) & glyphPathMoveTo,
-        (int (*)(FT_Vector *, void *)) & glyphPathLineTo,
-        (int (*)(FT_Vector *, FT_Vector *, void *)) & glyphPathConicTo,
-        (int (*)(FT_Vector *, FT_Vector *, FT_Vector *, void *)) & glyphPathCubicTo,
+        (int (*)(FT_Vector *, void *))&glyphPathMoveTo,
+        (int (*)(FT_Vector *, void *))&glyphPathLineTo,
+        (int (*)(FT_Vector *, FT_Vector *, void *))&glyphPathConicTo,
+        (int (*)(FT_Vector *, FT_Vector *, FT_Vector *, void *))&glyphPathCubicTo,
 #else
         &glyphPathMoveTo,
         &glyphPathLineTo,
@@ -337,7 +338,7 @@ SplashPath *SplashFTFont::getGlyphPath(int c)
     ff->face->size = sizeObj;
     FT_Set_Transform(ff->face, &textMatrix, nullptr);
     slot = ff->face->glyph;
-    if (ff->codeToGID && c < ff->codeToGIDLen && c >= 0) {
+    if (c < int(ff->codeToGID.size()) && c >= 0) {
         gid = ff->codeToGID[c];
     } else {
         gid = (FT_UInt)c;

@@ -6,7 +6,7 @@
 //
 // Copyright 2009 Stefan Thomas <thomas@eload24.com>
 // Copyright 2010, 2011 Hib Eris <hib@hiberis.nl>
-// Copyright 2010, 2018-2020, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2010, 2018-2020, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Julien Nabet <serval2412@yahoo.fr>
 //
 //========================================================================
@@ -124,8 +124,8 @@ int CachedFile::cache(const std::vector<ByteRange> &origRanges)
 
     int chunk = 0;
     while (chunk < numChunks) {
-        while (!chunkNeeded[chunk] && (++chunk != numChunks)) {
-            ;
+        while (chunk < numChunks && !chunkNeeded[chunk]) {
+            chunk++;
         }
         if (chunk == numChunks) {
             break;
@@ -133,8 +133,10 @@ int CachedFile::cache(const std::vector<ByteRange> &origRanges)
         startChunk = chunk;
         loadChunks.push_back(chunk);
 
-        while ((++chunk != numChunks) && chunkNeeded[chunk]) {
+        chunk++;
+        while (chunk < numChunks && chunkNeeded[chunk]) {
             loadChunks.push_back(chunk);
+            chunk++;
         }
         endChunk = chunk - 1;
 
@@ -144,12 +146,12 @@ int CachedFile::cache(const std::vector<ByteRange> &origRanges)
         chunk_ranges.push_back(range);
     }
 
-    if (chunk_ranges.size() > 0) {
-        CachedFileWriter writer = CachedFileWriter(this, &loadChunks);
-        return loader->load(chunk_ranges, &writer);
+    if (chunk_ranges.empty()) {
+        return 0;
     }
 
-    return 0;
+    CachedFileWriter writer = CachedFileWriter(this, &loadChunks);
+    return loader->load(chunk_ranges, &writer);
 }
 
 size_t CachedFile::read(void *ptr, size_t unitsize, size_t count)
@@ -212,8 +214,6 @@ CachedFileWriter::CachedFileWriter(CachedFile *cachedFileA, std::vector<int> *ch
         it = (*chunks).begin();
     }
 }
-
-CachedFileWriter::~CachedFileWriter() { }
 
 size_t CachedFileWriter::write(const char *ptr, size_t size)
 {

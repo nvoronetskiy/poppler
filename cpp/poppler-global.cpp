@@ -58,7 +58,10 @@ struct MiniIconv
     }
     MiniIconv(const MiniIconv &) = delete;
     MiniIconv &operator=(const MiniIconv &) = delete;
-    bool is_valid() const { return i_ != (iconv_t)-1; }
+    bool is_valid() const
+    {
+        return i_ != (iconv_t)-1; // NOLINT(performance-no-int-to-ptr)
+    }
     explicit operator iconv_t() const { return i_; }
     iconv_t i_;
 };
@@ -203,21 +206,19 @@ using namespace poppler;
  The case sensitivity.
 */
 
-noncopyable::noncopyable() { }
-
-noncopyable::~noncopyable() { }
+noncopyable::noncopyable() = default;
 
 noncopyable &noncopyable::operator=(noncopyable &&other) noexcept = default;
 
-ustring::ustring() { }
+ustring::ustring() = default;
 
 ustring::ustring(size_type len, value_type ch) : std::basic_string<value_type>(len, ch) { }
 
-ustring::~ustring() { }
+ustring::~ustring() = default;
 
 byte_array ustring::to_utf8() const
 {
-    if (!size()) {
+    if (empty()) {
         return byte_array();
     }
 
@@ -251,7 +252,7 @@ byte_array ustring::to_utf8() const
 
 std::string ustring::to_latin1() const
 {
-    if (!size()) {
+    if (empty()) {
         return std::string();
     }
 

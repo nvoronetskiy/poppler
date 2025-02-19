@@ -1,5 +1,5 @@
 /* poppler-link.cc: qt interface to poppler
- * Copyright (C) 2006-2007, 2013, 2016-2021, Albert Astals Cid
+ * Copyright (C) 2006-2007, 2013, 2016-2021, 2024, Albert Astals Cid
  * Copyright (C) 2007-2008, Pino Toscano <pino@kde.org>
  * Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
  * Copyright (C) 2012, Tobias Koenig <tokoe@kdab.com>
@@ -7,6 +7,7 @@
  * Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
  * Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -77,6 +78,10 @@ LinkPrivate::~LinkPrivate()
 LinkOCGStatePrivate::~LinkOCGStatePrivate() = default;
 
 LinkHidePrivate::~LinkHidePrivate() = default;
+
+LinkResetFormPrivate::~LinkResetFormPrivate() = default;
+
+LinkSubmitFormPrivate::~LinkSubmitFormPrivate() = default;
 
 class LinkGotoPrivate : public LinkPrivate
 {
@@ -151,17 +156,17 @@ LinkSoundPrivate::~LinkSoundPrivate()
 class LinkRenditionPrivate : public LinkPrivate
 {
 public:
-    explicit LinkRenditionPrivate(const QRectF &area, ::MediaRendition *rendition, ::LinkRendition::RenditionOperation operation, const QString &script, const Ref ref);
+    explicit LinkRenditionPrivate(const QRectF &area, std::unique_ptr<::MediaRendition> &&rendition, ::LinkRendition::RenditionOperation operation, const QString &script, const Ref ref);
     ~LinkRenditionPrivate() override;
 
-    MediaRendition *rendition;
+    std::unique_ptr<MediaRendition> rendition;
     LinkRendition::RenditionAction action;
     QString script;
     Ref annotationReference;
 };
 
-LinkRenditionPrivate::LinkRenditionPrivate(const QRectF &area, ::MediaRendition *r, ::LinkRendition::RenditionOperation operation, const QString &javaScript, const Ref ref)
-    : LinkPrivate(area), rendition(r ? new MediaRendition(r) : nullptr), action(LinkRendition::PlayRendition), script(javaScript), annotationReference(ref)
+LinkRenditionPrivate::LinkRenditionPrivate(const QRectF &area, std::unique_ptr<::MediaRendition> &&r, ::LinkRendition::RenditionOperation operation, const QString &javaScript, const Ref ref)
+    : LinkPrivate(area), rendition(r ? new MediaRendition(std::move(r)) : nullptr), action(LinkRendition::PlayRendition), script(javaScript), annotationReference(ref)
 {
     switch (operation) {
     case ::LinkRendition::NoRendition:
@@ -182,10 +187,7 @@ LinkRenditionPrivate::LinkRenditionPrivate(const QRectF &area, ::MediaRendition 
     }
 }
 
-LinkRenditionPrivate::~LinkRenditionPrivate()
-{
-    delete rendition;
-}
+LinkRenditionPrivate::~LinkRenditionPrivate() = default;
 
 class LinkJavaScriptPrivate : public LinkPrivate
 {
@@ -313,9 +315,9 @@ LinkDestination::LinkDestination(const QString &description) : d(new LinkDestina
     }
 }
 
-LinkDestination::LinkDestination(const LinkDestination &other) : d(other.d) { }
+LinkDestination::LinkDestination(const LinkDestination &other) = default;
 
-LinkDestination::~LinkDestination() { }
+LinkDestination::~LinkDestination() = default;
 
 LinkDestination::Kind LinkDestination::kind() const
 {
@@ -370,15 +372,15 @@ bool LinkDestination::isChangeZoom() const
 QString LinkDestination::toString() const
 {
     QString s = QString::number((qint8)d->kind);
-    s += ";" + QString::number(d->pageNum);
-    s += ";" + QString::number(d->left);
-    s += ";" + QString::number(d->bottom);
-    s += ";" + QString::number(d->right);
-    s += ";" + QString::number(d->top);
-    s += ";" + QString::number(d->zoom);
-    s += ";" + QString::number((qint8)d->changeLeft);
-    s += ";" + QString::number((qint8)d->changeTop);
-    s += ";" + QString::number((qint8)d->changeZoom);
+    s += ';' + QString::number(d->pageNum);
+    s += ';' + QString::number(d->left);
+    s += ';' + QString::number(d->bottom);
+    s += ';' + QString::number(d->right);
+    s += ';' + QString::number(d->top);
+    s += ';' + QString::number(d->zoom);
+    s += ';' + QString::number((qint8)d->changeLeft);
+    s += ';' + QString::number((qint8)d->changeTop);
+    s += ';' + QString::number((qint8)d->changeZoom);
     return s;
 }
 
@@ -431,7 +433,7 @@ LinkGoto::LinkGoto(const QRectF &linkArea, QString extFileName, const LinkDestin
     d->extFileName = std::move(extFileName); // TODO remove when extFileName moves to be a const &
 }
 
-LinkGoto::~LinkGoto() { }
+LinkGoto::~LinkGoto() = default;
 
 bool LinkGoto::isExternal() const
 {
@@ -464,7 +466,7 @@ LinkExecute::LinkExecute(const QRectF &linkArea, const QString &file, const QStr
     d->parameters = params;
 }
 
-LinkExecute::~LinkExecute() { }
+LinkExecute::~LinkExecute() = default;
 
 QString LinkExecute::fileName() const
 {
@@ -489,7 +491,7 @@ LinkBrowse::LinkBrowse(const QRectF &linkArea, const QString &url) : Link(*new L
     d->url = url;
 }
 
-LinkBrowse::~LinkBrowse() { }
+LinkBrowse::~LinkBrowse() = default;
 
 QString LinkBrowse::url() const
 {
@@ -509,7 +511,7 @@ LinkAction::LinkAction(const QRectF &linkArea, ActionType actionType) : Link(*ne
     d->type = actionType;
 }
 
-LinkAction::~LinkAction() { }
+LinkAction::~LinkAction() = default;
 
 LinkAction::ActionType LinkAction::actionType() const
 {
@@ -533,7 +535,7 @@ LinkSound::LinkSound(const QRectF &linkArea, double volume, bool sync, bool repe
     d->sound = sound;
 }
 
-LinkSound::~LinkSound() { }
+LinkSound::~LinkSound() = default;
 
 Link::LinkType LinkSound::linkType() const
 {
@@ -572,11 +574,16 @@ SoundObject *LinkSound::sound() const
 
 // LinkRendition
 LinkRendition::LinkRendition(const QRectF &linkArea, ::MediaRendition *rendition, int operation, const QString &script, const Ref &annotationReference) // clazy:exclude=function-args-by-value
-    : Link(*new LinkRenditionPrivate(linkArea, rendition, static_cast<enum ::LinkRendition::RenditionOperation>(operation), script, annotationReference))
+    : LinkRendition(linkArea, std::unique_ptr<::MediaRendition>(rendition), operation, script, annotationReference)
 {
 }
 
-LinkRendition::~LinkRendition() { }
+LinkRendition::LinkRendition(const QRectF &linkArea, std::unique_ptr<::MediaRendition> &&rendition, int operation, const QString &script, const Ref annotationReference)
+    : Link(*new LinkRenditionPrivate(linkArea, std::move(rendition), static_cast<enum ::LinkRendition::RenditionOperation>(operation), script, annotationReference))
+{
+}
+
+LinkRendition::~LinkRendition() = default;
 
 Link::LinkType LinkRendition::linkType() const
 {
@@ -586,7 +593,7 @@ Link::LinkType LinkRendition::linkType() const
 MediaRendition *LinkRendition::rendition() const
 {
     Q_D(const LinkRendition);
-    return d->rendition;
+    return d->rendition.get();
 }
 
 LinkRendition::RenditionAction LinkRendition::action() const
@@ -618,7 +625,7 @@ LinkJavaScript::LinkJavaScript(const QRectF &linkArea, const QString &js) : Link
     d->js = js;
 }
 
-LinkJavaScript::~LinkJavaScript() { }
+LinkJavaScript::~LinkJavaScript() = default;
 
 Link::LinkType LinkJavaScript::linkType() const
 {
@@ -637,7 +644,7 @@ LinkMovie::LinkMovie(const QRectF &linkArea, Operation operation, const QString 
 {
 }
 
-LinkMovie::~LinkMovie() { }
+LinkMovie::~LinkMovie() = default;
 
 Link::LinkType LinkMovie::linkType() const
 {
@@ -664,7 +671,7 @@ bool LinkMovie::isReferencedAnnotation(const MovieAnnotation *annotation) const
 
 LinkOCGState::LinkOCGState(LinkOCGStatePrivate *ocgp) : Link(*ocgp) { }
 
-LinkOCGState::~LinkOCGState() { }
+LinkOCGState::~LinkOCGState() = default;
 
 Link::LinkType LinkOCGState::linkType() const
 {
@@ -674,7 +681,7 @@ Link::LinkType LinkOCGState::linkType() const
 // LinkHide
 LinkHide::LinkHide(LinkHidePrivate *lhidep) : Link(*lhidep) { }
 
-LinkHide::~LinkHide() { }
+LinkHide::~LinkHide() = default;
 
 Link::LinkType LinkHide::linkType() const
 {
@@ -691,5 +698,59 @@ bool LinkHide::isShowAction() const
 {
     Q_D(const LinkHide);
     return d->isShow;
+}
+
+// LinkResetForm
+LinkResetForm::LinkResetForm(LinkResetFormPrivate *lrfp) : Link(*lrfp) { }
+
+LinkResetForm::~LinkResetForm() = default;
+
+Link::LinkType LinkResetForm::linkType() const
+{
+    return ResetForm;
+}
+
+// LinkSubmitForm
+// static assertions to ensure flags from Link.h match those from poppler-link.h
+static_assert(static_cast<int>(LinkSubmitForm::NoOpFlag) == static_cast<int>(::LinkSubmitForm::NoOpFlag), "NoOpFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::ExcludeFlag) == static_cast<int>(::LinkSubmitForm::ExcludeFlag), "ExcludeFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::IncludeNoValueFieldsFlag) == static_cast<int>(::LinkSubmitForm::IncludeNoValueFieldsFlag), "IncludeNoValueFieldsFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::ExportFormatFlag) == static_cast<int>(::LinkSubmitForm::ExportFormatFlag), "ExportFormatFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::GetMethodFlag) == static_cast<int>(::LinkSubmitForm::GetMethodFlag), "GetMethodFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::SubmitCoordinatesFlag) == static_cast<int>(::LinkSubmitForm::SubmitCoordinatesFlag), "SubmitCoordinatesFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::XFDFFlag) == static_cast<int>(::LinkSubmitForm::XFDFFlag), "XFDFFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::IncludeAppendSavesFlag) == static_cast<int>(::LinkSubmitForm::IncludeAppendSavesFlag), "IncludeAppendSavesFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::IncludeAnnotationsFlag) == static_cast<int>(::LinkSubmitForm::IncludeAnnotationsFlag), "IncludeAnnotationsFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::SubmitPDFFlag) == static_cast<int>(::LinkSubmitForm::SubmitPDFFlag), "SubmitPDFFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::CanonicalFormatFlag) == static_cast<int>(::LinkSubmitForm::CanonicalFormatFlag), "CanonicalFormatFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::ExclNonUserAnnotsFlag) == static_cast<int>(::LinkSubmitForm::ExclNonUserAnnotsFlag), "ExclNonUserAnnotsFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::ExclFKeyFlag) == static_cast<int>(::LinkSubmitForm::ExclFKeyFlag), "ExclFKeyFlag does not match");
+static_assert(static_cast<int>(LinkSubmitForm::EmbedFormFlag) == static_cast<int>(::LinkSubmitForm::EmbedFormFlag), "EmbedFormFlag does not match");
+
+LinkSubmitForm::LinkSubmitForm(LinkSubmitFormPrivate *lsfp) : Link(*lsfp) { }
+
+LinkSubmitForm::~LinkSubmitForm() = default;
+
+Link::LinkType LinkSubmitForm::linkType() const
+{
+    return SubmitForm;
+}
+
+QVector<int> LinkSubmitForm::getFieldIds() const
+{
+    Q_D(const LinkSubmitForm);
+    return d->m_fieldIds;
+}
+
+QString LinkSubmitForm::getUrl() const
+{
+    Q_D(const LinkSubmitForm);
+    return d->m_url;
+}
+
+LinkSubmitForm::SubmitFormFlags LinkSubmitForm::getFlags() const
+{
+    Q_D(const LinkSubmitForm);
+    return d->m_flags;
 }
 }

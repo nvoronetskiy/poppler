@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2010, Pino Toscano <pino@kde.org>
  * Copyright (C) 2018, Zsombor Hollay-Horvath <hollay.horvath@gmail.com>
+ * Copyright (C) 2024, Albert Astals Cid <aacid@kde.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,7 +55,7 @@ public:
     const char *const_data() const;
     int bytes_per_row() const;
 
-    image copy(const rect &r = rect()) const;
+    image copy() const;
 
     bool save(const std::string &file_name, const std::string &out_format, int dpi = -1) const;
 

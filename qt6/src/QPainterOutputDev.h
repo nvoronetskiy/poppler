@@ -21,6 +21,7 @@
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2013 Mihai Niculescu <q.quark@gmail.com>
 // Copyright (C) 2017, 2018, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -192,11 +193,11 @@ private:
     using QPainterFontID = std::pair<Ref, double>;
     std::map<QPainterFontID, std::unique_ptr<QRawFont>> m_rawFontCache;
     std::map<QPainterFontID, std::unique_ptr<QPainterOutputDevType3Font>> m_type3FontCache;
-    std::map<Ref, const int *> m_codeToGIDCache;
+    std::map<Ref, std::vector<int>> m_codeToGIDCache;
 
     // The table that maps character codes to glyph indexes
-    const int *m_codeToGID;
-    std::stack<const int *> m_codeToGIDStack;
+    const std::vector<int> *m_codeToGID;
+    std::stack<const std::vector<int> *> m_codeToGIDStack;
 
     FT_Library m_ftLibrary;
     // as of FT 2.1.8, CID fonts are indexed by CID instead of GID

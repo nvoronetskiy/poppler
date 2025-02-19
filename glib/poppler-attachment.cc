@@ -1,5 +1,6 @@
 /* poppler-attachment.cc: glib wrapper for poppler
  * Copyright (C) 2006, Red Hat, Inc.
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,7 +38,7 @@
 
 struct PopplerAttachmentPrivate
 {
-    Object obj_stream {};
+    Object obj_stream;
     GDateTime *mtime;
     GDateTime *ctime;
 };
@@ -358,7 +359,9 @@ gboolean poppler_attachment_save_to_callback(PopplerAttachment *attachment, Popp
     priv = GET_PRIVATE(attachment);
 
     stream = priv->obj_stream.getStream();
-    stream->reset();
+    if (!stream->reset()) {
+        return FALSE;
+    }
 
     do {
         int data;

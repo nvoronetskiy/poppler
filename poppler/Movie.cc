@@ -6,7 +6,7 @@
 // Hugo Mercier <hmercier31[at]gmail.com> (c) 2008
 // Pino Toscano <pino@kde.org> (c) 2008
 // Carlos Garcia Campos <carlosgc@gnome.org> (c) 2010
-// Albert Astals Cid <aacid@kde.org> (c) 2010, 2017-2019, 2022
+// Albert Astals Cid <aacid@kde.org> (c) 2010, 2017-2019, 2022, 2024
 // Evgeny Stambulchik <fnevgeny@gmail.com> (c) 2019
 //
 // This program is free software; you can redistribute it and/or modify
@@ -44,8 +44,6 @@ MovieActivationParameters::MovieActivationParameters()
     znum = 1;
     zdenum = 1;
 }
-
-MovieActivationParameters::~MovieActivationParameters() { }
 
 void MovieActivationParameters::parseMovieActivation(const Object *aDict)
 {
@@ -172,7 +170,7 @@ void MovieActivationParameters::parseMovieActivation(const Object *aDict)
 
 void Movie::parseMovie(const Object *movieDict)
 {
-    fileName = nullptr;
+    fileName.reset();
     rotationAngle = 0;
     width = -1;
     height = -1;
@@ -225,10 +223,7 @@ void Movie::parseMovie(const Object *movieDict)
     }
 }
 
-Movie::~Movie()
-{
-    delete fileName;
-}
+Movie::~Movie() = default;
 
 Movie::Movie(const Object *movieDict)
 {
@@ -268,8 +263,6 @@ Movie::Movie(const Movie &other)
 
     if (other.fileName) {
         fileName = other.fileName->copy();
-    } else {
-        fileName = nullptr;
     }
 }
 

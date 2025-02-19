@@ -12,11 +12,12 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
-// Copyright (C) 2009, 2011, 2012, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2011, 2012, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Petr Gajdos <pgajdos@novell.com>
 // Copyright (C) 2011 Andreas Hartmetz <ahartmetz@gmail.com>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -35,6 +36,7 @@
 #include "fofi/FoFiTrueType.h"
 #include "fofi/FoFiType1C.h"
 #include "SplashFTFontFile.h"
+#include "SplashFontFileID.h"
 #include "SplashFTFontEngine.h"
 
 //------------------------------------------------------------------------
@@ -64,34 +66,34 @@ SplashFTFontEngine::~SplashFTFontEngine()
     FT_Done_FreeType(lib);
 }
 
-SplashFontFile *SplashFTFontEngine::loadType1Font(SplashFontFileID *idA, SplashFontSrc *src, const char **enc)
+SplashFontFile *SplashFTFontEngine::loadType1Font(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, const char **enc, int faceIndex)
 {
-    return SplashFTFontFile::loadType1Font(this, idA, src, enc);
+    return SplashFTFontFile::loadType1Font(this, std::move(idA), src, enc, faceIndex);
 }
 
-SplashFontFile *SplashFTFontEngine::loadType1CFont(SplashFontFileID *idA, SplashFontSrc *src, const char **enc)
+SplashFontFile *SplashFTFontEngine::loadType1CFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, const char **enc, int faceIndex)
 {
-    return SplashFTFontFile::loadType1Font(this, idA, src, enc);
+    return SplashFTFontFile::loadType1Font(this, std::move(idA), src, enc, faceIndex);
 }
 
-SplashFontFile *SplashFTFontEngine::loadOpenTypeT1CFont(SplashFontFileID *idA, SplashFontSrc *src, const char **enc)
+SplashFontFile *SplashFTFontEngine::loadOpenTypeT1CFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, const char **enc, int faceIndex)
 {
-    return SplashFTFontFile::loadType1Font(this, idA, src, enc);
+    return SplashFTFontFile::loadType1Font(this, std::move(idA), src, enc, faceIndex);
 }
 
-SplashFontFile *SplashFTFontEngine::loadCIDFont(SplashFontFileID *idA, SplashFontSrc *src)
+SplashFontFile *SplashFTFontEngine::loadCIDFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, int faceIndex)
 {
-    return SplashFTFontFile::loadCIDFont(this, idA, src, nullptr, 0);
+    return SplashFTFontFile::loadCIDFont(this, std::move(idA), src, {}, faceIndex);
 }
 
-SplashFontFile *SplashFTFontEngine::loadOpenTypeCFFFont(SplashFontFileID *idA, SplashFontSrc *src, int *codeToGID, int codeToGIDLen)
+SplashFontFile *SplashFTFontEngine::loadOpenTypeCFFFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, std::vector<int> &&codeToGID, int faceIndex)
 {
-    return SplashFTFontFile::loadCIDFont(this, idA, src, codeToGID ? codeToGID : nullptr, codeToGID ? codeToGIDLen : 0);
+    return SplashFTFontFile::loadCIDFont(this, std::move(idA), src, std::move(codeToGID), faceIndex);
 }
 
-SplashFontFile *SplashFTFontEngine::loadTrueTypeFont(SplashFontFileID *idA, SplashFontSrc *src, int *codeToGID, int codeToGIDLen, int faceIndex)
+SplashFontFile *SplashFTFontEngine::loadTrueTypeFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, std::vector<int> &&codeToGID, int faceIndex)
 {
     SplashFontFile *ret;
-    ret = SplashFTFontFile::loadTrueTypeFont(this, idA, src, codeToGID, codeToGIDLen, faceIndex);
+    ret = SplashFTFontFile::loadTrueTypeFont(this, std::move(idA), src, std::move(codeToGID), faceIndex);
     return ret;
 }

@@ -6,13 +6,13 @@
 //
 // Copyright 2015 André Guerreiro <aguerreiro1985@gmail.com>
 // Copyright 2015 André Esser <bepandre@hotmail.com>
-// Copyright 2015, 2017-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright 2015, 2017-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2016 Markus Kilås <digital@markuspage.com>
 // Copyright 2017, 2019 Hans-Ulrich Jüttner <huj@froreich-bioscientia.de>
 // Copyright 2017, 2019 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Chinmoy Ranjan Pradhan <chinmoyrp65@protonmail.com>
 // Copyright 2019 Alexey Pavlov <alexpux@gmail.com>
-// Copyright 2019. 2023 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2019. 2023, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2019 Nelson Efrain A. Cruz <neac03@gmail.com>
 // Copyright 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
 // Copyright 2021 Theofilos Intzoglou <int.teo@gmail.com>
@@ -119,8 +119,8 @@ static char *getReadableTime(time_t unix_time)
 
 static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, const char *filename)
 {
-    const GooString *signature = s->getSignature();
-    if (!signature) {
+    const std::vector<unsigned char> &signature = s->getSignature();
+    if (signature.empty()) {
         printf("Cannot dump signature #%d\n", sig_num);
         return false;
     }
@@ -129,11 +129,11 @@ static bool dumpSignature(int sig_num, int sigCount, FormFieldSignature *s, cons
     // We want format to be {0:s}.sig{1:Xd} where X is sigCountLength
     // since { is the magic character to replace things we need to put it twice where
     // we don't want it to be replaced
-    const std::unique_ptr<GooString> format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
-    const std::unique_ptr<GooString> path = GooString::format(format->c_str(), gbasename(filename).c_str(), sig_num);
-    printf("Signature #%d (%u bytes) => %s\n", sig_num, signature->getLength(), path->c_str());
-    std::ofstream outfile(path->c_str(), std::ofstream::binary);
-    outfile.write(signature->c_str(), signature->getLength());
+    const std::string format = GooString::format("{{0:s}}.sig{{1:{0:d}d}}", sigCountLength);
+    const std::string path = GooString::format(format.c_str(), gbasename(filename).c_str(), sig_num);
+    printf("Signature #%d (%lu bytes) => %s\n", sig_num, signature.size(), path.c_str());
+    std::ofstream outfile(path.c_str(), std::ofstream::binary);
+    outfile.write(reinterpret_cast<const char *>(signature.data()), signature.size());
     outfile.close();
 
     return true;
@@ -354,7 +354,7 @@ int main(int argc, char *argv[])
                 for (auto &cert : vCerts) {
                     const GooString &nick = cert->getNickName();
                     const auto location = locationToString(cert->getKeyLocation());
-                    printf("%s %s\n", nick.c_str(), location.c_str());
+                    printf("%s %s %s\n", nick.c_str(), (cert->isQualified() ? "(*)" : "   "), location.c_str());
                 }
             }
         }
@@ -449,10 +449,10 @@ int main(int argc, char *argv[])
         }
 
         // We don't provide a way to customize the UI from pdfsig for now
-        const bool success = doc->sign(std::string { argv[2] }, std::string { certNickname }, std::string { password }, newSignatureFieldName.copy(), /*page*/ 1,
+        const auto failure = doc->sign(std::string { argv[2] }, std::string { certNickname }, std::string { password }, newSignatureFieldName.copy(), /*page*/ 1,
                                        /*rect */ { 0, 0, 0, 0 }, /*signatureText*/ {}, /*signatureTextLeft*/ {}, /*fontSize */ 0, /*leftFontSize*/ 0,
                                        /*fontColor*/ {}, /*borderWidth*/ 0, /*borderColor*/ {}, /*backgroundColor*/ {}, rs.get(), /* location */ nullptr, /* image path */ "", ownerPW, userPW);
-        return success ? 0 : 3;
+        return !failure.has_value() ? 0 : 3;
     }
 
     const std::vector<FormFieldSignature *> signatures = doc->getSignatureFields();
@@ -516,7 +516,7 @@ int main(int argc, char *argv[])
             return 2;
         }
         if (etsiCAdESdetached) {
-            ffs->setSignatureType(ETSI_CAdES_detached);
+            ffs->setSignatureType(CryptoSign::SignatureType::ETSI_CAdES_detached);
         }
         const auto rs = std::unique_ptr<GooString>(reason.toStr().empty() ? nullptr : std::make_unique<GooString>(utf8ToUtf16WithBom(reason.toStr())));
         if (ffs->getNumWidgets() != 1) {
@@ -541,11 +541,11 @@ int main(int argc, char *argv[])
         const std::string signerName = certInfo->getSubjectInfo().commonName;
         const std::string timestamp = timeToStringWithFormat(nullptr, "%Y.%m.%d %H:%M:%S %z");
         const AnnotColor blackColor(0, 0, 0);
-        const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str())->toStr() + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str())->toStr());
+        const std::string signatureText(GooString::format(_("Digitally signed by {0:s}"), signerName.c_str()) + "\n" + GooString::format(_("Date: {0:s}"), timestamp.c_str()));
         const auto gSignatureText = std::make_unique<GooString>((signatureText.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signatureText));
         const auto gSignatureLeftText = std::make_unique<GooString>((signerName.empty() || noAppearance) ? "" : utf8ToUtf16WithBom(signerName));
-        const bool success = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
-        return success ? 0 : 3;
+        const auto failure = fws->signDocumentWithAppearance(argv[2], std::string { certNickname }, std::string { password }, rs.get(), nullptr, {}, {}, *gSignatureText, *gSignatureLeftText, 0, 0, std::make_unique<AnnotColor>(blackColor));
+        return !failure.has_value() ? 0 : 3;
     }
 
     if (argc > 2) {
@@ -574,6 +574,16 @@ int main(int argc, char *argv[])
         printf("File '%s' does not contain any signatures\n", fileName->c_str());
         return 2;
     }
+    std::unordered_map<int, SignatureInfo *> signatureInfos;
+    for (unsigned int i = 0; i < sigCount; i++) {
+        // Let's start the signature check first for signatures.
+        // we can always wait for completion later
+        FormFieldSignature *ffs = signatures.at(i);
+        if (ffs->getSignatureType() == CryptoSign::SignatureType::unsigned_signature_field) {
+            continue;
+        }
+        signatureInfos[i] = ffs->validateSignatureAsync(!dontVerifyCert, false, -1 /* now */, !noOCSPRevocationCheck, useAIACertFetch, {});
+    }
 
     for (unsigned int i = 0; i < sigCount; i++) {
         FormFieldSignature *ffs = signatures.at(i);
@@ -584,12 +594,13 @@ int main(int argc, char *argv[])
             printf("  - Signature Field Name: %s\n", name.c_str());
         }
 
-        if (ffs->getSignatureType() == unsigned_signature_field) {
+        if (ffs->getSignatureType() == CryptoSign::SignatureType::unsigned_signature_field) {
             printf("  The signature form field is not signed.\n");
             continue;
         }
 
-        const SignatureInfo *sig_info = ffs->validateSignature(!dontVerifyCert, false, -1 /* now */, !noOCSPRevocationCheck, useAIACertFetch);
+        const SignatureInfo *sig_info = signatureInfos[i];
+        CertificateValidationStatus certificateStatus = ffs->validateSignatureResult();
         printf("  - Signer Certificate Common Name: %s\n", sig_info->getSignerName().c_str());
         printf("  - Signer full Distinguished Name: %s\n", sig_info->getSubjectDN().c_str());
         printf("  - Signing Time: %s\n", time_str = getReadableTime(sig_info->getSigningTime()));
@@ -621,16 +632,17 @@ int main(int argc, char *argv[])
         }
         printf("  - Signature Type: ");
         switch (ffs->getSignatureType()) {
-        case adbe_pkcs7_sha1:
+        case CryptoSign::SignatureType::adbe_pkcs7_sha1:
             printf("adbe.pkcs7.sha1\n");
             break;
-        case adbe_pkcs7_detached:
+        case CryptoSign::SignatureType::adbe_pkcs7_detached:
             printf("adbe.pkcs7.detached\n");
             break;
-        case ETSI_CAdES_detached:
+        case CryptoSign::SignatureType::ETSI_CAdES_detached:
             printf("ETSI.CAdES.detached\n");
             break;
-        default:
+        case CryptoSign::SignatureType::unknown_signature_type:
+        case CryptoSign::SignatureType::unsigned_signature_field: /*shouldn't happen*/
             printf("unknown\n");
         }
         const std::vector<Goffset> ranges = ffs->getSignedRangeBounds();
@@ -649,7 +661,7 @@ int main(int argc, char *argv[])
         if (sig_info->getSignatureValStatus() != SIGNATURE_VALID || dontVerifyCert) {
             continue;
         }
-        printf("  - Certificate Validation: %s\n", getReadableCertState(sig_info->getCertificateValStatus()));
+        printf("  - Certificate Validation: %s\n", getReadableCertState(certificateStatus));
     }
 
     return 0;

@@ -17,6 +17,8 @@
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Even Rouault <even.rouault@mines-paris.org>
 // Copyright (C) 2019 Robert Niemi <robert.den.klurige@gmail.com>
+// Copyright (C) 2024, 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -26,7 +28,7 @@
 #include <config.h>
 
 #include <climits>
-#include "gmem.h"
+#include "goo/gmem.h"
 #include "Error.h"
 #include "JArithmeticDecoder.h"
 #include "JPXStream.h"
@@ -178,7 +180,7 @@ static const unsigned int signContext[5][5][2] = {
 #define jpxFloorDivPow2(x, y) ((x) >> (y))
 
 // ceil(x / y)
-#define jpxCeilDiv(x, y) (((x) + (y)-1) / (y))
+#define jpxCeilDiv(x, y) (((x) + (y) - 1) / (y))
 
 // ceil(x / 2^y)
 #define jpxCeilDivPow2(x, y) (((x) + (1 << (y)) - 1) >> (y))
@@ -269,18 +271,21 @@ JPXStream::~JPXStream()
     delete bufStr;
 }
 
-void JPXStream::reset()
+bool JPXStream::reset()
 {
-    bufStr->reset();
+    bool ret = bufStr->reset();
     if (readBoxes()) {
         curY = img.yOffset;
     } else {
         // readBoxes reported an error, so we go immediately to EOF
         curY = img.ySize;
+        ret = false;
     }
     curX = img.xOffset;
     curComp = 0;
     readBufLen = 0;
+
+    return ret;
 }
 
 void JPXStream::close()
@@ -481,7 +486,7 @@ bool JPXStream::isBinary(bool last) const
     return str->isBinary(true);
 }
 
-void JPXStream::getImageParams(int *bitsPerComponent, StreamColorSpaceMode *csMode)
+void JPXStream::getImageParams(int *bitsPerComponent, StreamColorSpaceMode *csMode, bool *hasAlpha)
 {
     unsigned int boxType, boxLen, dataLen, csEnum;
     unsigned int bpc1, dummy, i;
@@ -490,8 +495,9 @@ void JPXStream::getImageParams(int *bitsPerComponent, StreamColorSpaceMode *csMo
     bool haveBPC, haveCSMode;
 
     csPrec = 0; // make gcc happy
+    *hasAlpha = false;
     haveBPC = haveCSMode = false;
-    bufStr->reset();
+    (void)bufStr->reset();
     if (bufStr->lookChar() == 0xff) {
         getImageParams2(bitsPerComponent, csMode);
     } else {

@@ -27,6 +27,8 @@
 // Copyright (C) 2019, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Dan Shea <dan.shea@logical-innovations.com>
 // Copyright (C) 2020 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
+// Copyright (C) 2024, 2025 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -166,21 +168,21 @@ public:
     // <word>.
     double primaryDelta(const TextWord *word) const;
 
-    static int cmpYX(const void *p1, const void *p2);
+    static bool cmpYX(const TextWord *const word1, const TextWord *const word2);
 
     void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
 
     // Get the TextFontInfo object associated with a character.
-    const TextFontInfo *getFontInfo(int idx) const { return font[idx]; }
+    const TextFontInfo *getFontInfo(int idx) const { return chars[idx].font; }
 
     // Get the next TextWord on the linked list.
     const TextWord *getNext() const { return next; }
 
 #ifdef TEXTOUT_WORD_LIST
-    int getLength() const { return len; }
-    const Unicode *getChar(int idx) const { return &text[idx]; }
+    int getLength() const { return chars.size(); }
+    const Unicode *getChar(int idx) const { return &chars[idx].text; }
     GooString *getText() const;
-    const GooString *getFontName(int idx) const { return font[idx]->fontName; }
+    const GooString *getFontName(int idx) const { return chars[idx].font->fontName; }
     void getColor(double *r, double *g, double *b) const
     {
         *r = colorR;
@@ -197,19 +199,19 @@ public:
     void getCharBBox(int charIdx, double *xMinA, double *yMinA, double *xMaxA, double *yMaxA) const;
     double getFontSize() const { return fontSize; }
     int getRotation() const { return rot; }
-    int getCharPos() const { return charPos[0]; }
-    int getCharLen() const { return charPos[len] - charPos[0]; }
+    int getCharPos() const { return chars.empty() ? 0 : chars.front().charPos; }
+    int getCharLen() const { return chars.empty() ? 0 : chars.back().charPos - chars.front().charPos; }
     bool getSpaceAfter() const { return spaceAfter; }
 #endif
     bool isUnderlined() const { return underlined; }
     const AnnotLink *getLink() const { return link; }
-    double getEdge(int i) const { return edge[i]; }
+    double getEdge(int i) const { return chars[i].edge; }
     double getBaseline() const { return base; }
     bool hasSpaceAfter() const { return spaceAfter; }
     const TextWord *nextWord() const { return next; };
+    auto len() const { return chars.size(); }
 
 private:
-    void ensureCapacity(int capacity);
     void setInitialBounds(TextFontInfo *fontA, double x, double y);
 
     int rot; // rotation, multiple of 90 degrees
@@ -218,18 +220,22 @@ private:
     double xMin, xMax; // bounding box x coordinates
     double yMin, yMax; // bounding box y coordinates
     double base; // baseline x or y coordinate
-    Unicode *text; // the text
-    CharCode *charcode; // glyph indices
-    double *edge; // "near" edge x or y coord of each char
-                  //   (plus one extra entry for the last char)
-    int *charPos; // character position (within content stream)
-                  //   of each char (plus one extra entry for
-                  //   the last char)
-    int len; // length of text/edge/charPos/font arrays
-    int size; // size of text/edge/charPos/font arrays
-    TextFontInfo **font; // font information for each char
-    Matrix *textMat; // transformation matrix for each char
+
     double fontSize; // font size
+
+    struct CharInfo
+    {
+        Unicode text;
+        CharCode charcode;
+        int charPos;
+        double edge;
+        TextFontInfo *font;
+        Matrix textMat;
+    };
+    std::vector<CharInfo> chars;
+    int charPosEnd = 0;
+    double edgeEnd = 0;
+
     bool spaceAfter; // set if there is a space between this
                      //   word and the next word on the line
     bool underlined;
@@ -267,20 +273,23 @@ public:
     TextPool(const TextPool &) = delete;
     TextPool &operator=(const TextPool &) = delete;
 
-    TextWord *getPool(int baseIdx) { return pool[baseIdx - minBaseIdx]; }
-    void setPool(int baseIdx, TextWord *p) { pool[baseIdx - minBaseIdx] = p; }
+    TextWord *getPool(int baseIdx) { return pool[baseIdx - minBaseIdx].head; }
+    void setPool(int baseIdx, TextWord *p) { pool[baseIdx - minBaseIdx].head = p; }
 
     int getBaseIdx(double base) const;
 
     void addWord(TextWord *word);
+    void sort();
 
 private:
     int minBaseIdx; // min baseline bucket index
     int maxBaseIdx; // max baseline bucket index
-    TextWord **pool; // array of linked lists, one for each
-                     //   baseline value (multiple of 4 pts)
-    TextWord *cursor; // pointer to last-accessed word
-    int cursorBaseIdx; // baseline bucket index of last-accessed word
+    struct WordList
+    {
+        TextWord *head = nullptr;
+        TextWord *tail = nullptr;
+    };
+    std::vector<WordList> pool;
 
     friend class TextBlock;
     friend class TextPage;
@@ -318,7 +327,7 @@ public:
 
     int cmpYX(const TextLine *line) const;
 
-    static int cmpXY(const void *p1, const void *p2);
+    static bool cmpXY(const TextLine *const line1, const TextLine *const line2);
 
     void coalesce(const UnicodeMap *uMap);
 
@@ -388,9 +397,7 @@ public:
     // Update this block's priMin and priMax values, looking at <blk>.
     void updatePriMinMax(const TextBlock *blk);
 
-    static int cmpXYPrimaryRot(const void *p1, const void *p2);
-
-    static int cmpYXPrimaryRot(const void *p1, const void *p2);
+    static bool cmpXYPrimaryRot(const TextBlock *const blk1, const TextBlock *const blk2);
 
     int primaryCmp(const TextBlock *blk) const;
 
@@ -629,7 +636,7 @@ public:
                   double *xMax, double *yMax, PDFRectangle *continueMatch, bool *ignoredHyphen);
 
     // Get the text which is inside the specified rectangle.
-    GooString *getText(double xMin, double yMin, double xMax, double yMax, EndOfLineKind textEOL) const;
+    GooString getText(double xMin, double yMin, double xMax, double yMax, EndOfLineKind textEOL) const;
 
     void visitSelection(TextSelectionVisitor *visitor, const PDFRectangle *selection, SelectionStyle style);
 
@@ -637,9 +644,9 @@ public:
 
     std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale);
 
-    GooString *getSelectionText(const PDFRectangle *selection, SelectionStyle style);
+    GooString getSelectionText(const PDFRectangle *selection, SelectionStyle style);
 
-    std::vector<TextWordSelection *> **getSelectionWords(const PDFRectangle *selection, SelectionStyle style, int *nLines);
+    [[nodiscard]] std::vector<std::vector<std::unique_ptr<TextWordSelection>>> getSelectionWords(const PDFRectangle *selection, SelectionStyle style);
 
     // Find a string by character position and length.  If found, sets
     // the text bounding rectangle and returns true; otherwise returns
@@ -842,7 +849,7 @@ public:
     bool findText(const Unicode *s, int len, bool startAtTop, bool stopAtBottom, bool startAtLast, bool stopAtLast, bool caseSensitive, bool backward, bool wholeWord, double *xMin, double *yMin, double *xMax, double *yMax) const;
 
     // Get the text which is inside the specified rectangle.
-    GooString *getText(double xMin, double yMin, double xMax, double yMax) const;
+    GooString getText(double xMin, double yMin, double xMax, double yMax) const;
 
     // Find a string by character position and length.  If found, sets
     // the text bounding rectangle and returns true; otherwise returns
@@ -853,7 +860,7 @@ public:
 
     std::vector<PDFRectangle *> *getSelectionRegion(const PDFRectangle *selection, SelectionStyle style, double scale);
 
-    GooString *getSelectionText(const PDFRectangle *selection, SelectionStyle style);
+    GooString getSelectionText(const PDFRectangle *selection, SelectionStyle style);
 
     // If true, will combine characters when a base and combining
     // character are drawn on eachother.

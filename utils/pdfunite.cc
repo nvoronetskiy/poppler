@@ -7,7 +7,7 @@
 // Copyright (C) 2011-2015, 2017 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2012 Arseny Solokha <asolokha@gmx.com>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
-// Copyright (C) 2012, 2014, 2017-2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2012, 2014, 2017-2019, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2015 Arthur Stavisky <vovodroid@gmail.com>
@@ -16,6 +16,7 @@
 // Copyright (C) 2019 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2019, 2023 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2022 crt <chluo@cse.cuhk.edu.hk>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -48,7 +49,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
                     const Object &mvalue = mergeNameArray.arrayGetNF(j + 1);
                     if (mkey.isString() && mvalue.isRef()) {
                         if (mkey.getString()->cmp(key.getString()) < 0) {
-                            newNameArray->add(Object(new GooString(mkey.getString()->c_str())));
+                            newNameArray->add(Object(mkey.getString()->copy()));
                             newNameArray->add(Object(Ref { mvalue.getRef().num + numOffset, mvalue.getRef().gen }));
                             j += 2;
                         } else if (mkey.getString()->cmp(key.getString()) == 0) {
@@ -60,7 +61,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
                         j += 2;
                     }
                 }
-                newNameArray->add(Object(new GooString(key.getString()->c_str())));
+                newNameArray->add(Object(key.getString()->copy()));
                 newNameArray->add(Object(value.getRef()));
             }
         }
@@ -68,7 +69,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
             const Object &mkey = mergeNameArray.arrayGetNF(j);
             const Object &mvalue = mergeNameArray.arrayGetNF(j + 1);
             if (mkey.isString() && mvalue.isRef()) {
-                newNameArray->add(Object(new GooString(mkey.getString()->c_str())));
+                newNameArray->add(Object(mkey.getString()->copy()));
                 newNameArray->add(Object(Ref { mvalue.getRef().num + numOffset, mvalue.getRef().gen }));
             }
             j += 2;
@@ -81,7 +82,7 @@ static void doMergeNameTree(PDFDoc *doc, XRef *srcXRef, XRef *countRef, int oldR
             const Object &key = mergeNameArray.arrayGetNF(i);
             const Object &value = mergeNameArray.arrayGetNF(i + 1);
             if (key.isString() && value.isRef()) {
-                newNameArray->add(Object(new GooString(key.getString()->c_str())));
+                newNameArray->add(Object(key.getString()->copy()));
                 newNameArray->add(Object(Ref { value.getRef().num + numOffset, value.getRef().gen }));
             }
         }
@@ -201,7 +202,7 @@ int main(int argc, char *argv[])
     Object names;
     Object afObj;
     Object ocObj;
-    if (docs.size() >= 1) {
+    if (!docs.empty()) {
         Object catObj = docs[0]->getXRef()->getCatalog();
         if (!catObj.isDict()) {
             fclose(f);

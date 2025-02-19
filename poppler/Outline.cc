@@ -22,7 +22,7 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2021 RM <rm+git@arcsin.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -91,8 +91,7 @@ static void insertChildHelper(const std::string &itemTitle, int destPageNum, uns
 
     Object outlineItem = Object(new Dict(xref));
 
-    GooString *g = new GooString(itemTitle);
-    outlineItem.dictSet("Title", Object(g));
+    outlineItem.dictSet("Title", Object(std::make_unique<GooString>(itemTitle)));
     outlineItem.dictSet("Dest", Object(a));
     outlineItem.dictSet("Count", Object(1));
     outlineItem.dictAdd("Parent", Object(parentObjRef));
@@ -302,8 +301,7 @@ int Outline::addOutlineTreeNodeList(const std::vector<OutlineTreeNode> &nodeList
         }
         lastRef = outlineItemRef;
 
-        GooString *g = new GooString(node.title);
-        outlineItem.dictSet("Title", Object(g));
+        outlineItem.dictSet("Title", Object(std::make_unique<GooString>(node.title)));
         outlineItem.dictSet("Dest", Object(a));
         itemCount++;
 
@@ -490,9 +488,9 @@ void OutlineItem::open()
 void OutlineItem::setTitle(const std::string &titleA)
 {
     Object dict = xref->fetch(ref);
-    GooString *g = new GooString(titleA);
+    auto g = std::make_unique<GooString>(titleA);
     title = TextStringToUCS4(g->toStr());
-    dict.dictSet("Title", Object(g));
+    dict.dictSet("Title", Object(std::move(g)));
     xref->setModifiedObject(&dict, ref);
 }
 

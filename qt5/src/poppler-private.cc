@@ -1,18 +1,18 @@
 /* poppler-private.cc: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
- * Copyright (C) 2006, 2011, 2015, 2017-2020 by Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2006, 2011, 2015, 2017-2020, 2024 by Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2008, 2010, 2011, 2014 by Pino Toscano <pino@kde.org>
  * Copyright (C) 2013 by Thomas Freitag <Thomas.Freitag@alfa.de>
  * Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
  * Copyright (C) 2016 Jakub Alba <jakubalba@gmail.com>
  * Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
  * Copyright (C) 2018-2020 Adam Reichold <adam.reichold@t-online.de>
- * Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2019, 2020, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2019 João Netto <joaonetto901@gmail.com>
  * Copyright (C) 2021 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2023 Shivodit Gill <shivodit.gill@gmail.com>
- * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Inspired on code by
  * Copyright (C) 2004 by Albert Astals Cid <tsdgeos@terra.es>
  * Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
@@ -43,6 +43,7 @@
 #include <Outline.h>
 #include <PDFDocEncoding.h>
 #include <UnicodeMap.h>
+#include <UTF.h>
 
 #ifdef ANDROID
 #    include <QtCore/QString>
@@ -121,48 +122,45 @@ QString UnicodeParsedString(const std::string &s1)
         return QString();
     }
 
-    if (GooString::hasUnicodeMarker(s1) || GooString::hasUnicodeMarkerLE(s1)) {
+    if (hasUnicodeByteOrderMark(s1) || hasUnicodeByteOrderMarkLE(s1)) {
         return QString::fromUtf16(reinterpret_cast<const ushort *>(s1.c_str()), s1.size() / 2);
     } else {
-        int stringLength;
-        const char *cString = pdfDocEncodingToUTF16(s1, &stringLength);
-        auto result = QString::fromUtf16(reinterpret_cast<const ushort *>(cString), stringLength / 2);
-        delete[] cString;
+        std::string cString = pdfDocEncodingToUTF16(s1);
+        auto result = QString::fromUtf16(reinterpret_cast<const ushort *>(cString.c_str()), cString.size() / 2);
         return result;
     }
 }
 
-GooString *QStringToUnicodeGooString(const QString &s)
+std::unique_ptr<GooString> QStringToUnicodeGooString(const QString &s)
 {
     if (s.isEmpty()) {
-        return new GooString();
+        return std::make_unique<GooString>();
     }
     int len = s.length() * 2 + 2;
-    char *cstring = (char *)gmallocn(len, sizeof(char));
-    cstring[0] = (char)0xfe;
-    cstring[1] = (char)0xff;
-    for (int i = 0; i < s.length(); ++i) {
-        cstring[2 + i * 2] = s.at(i).row();
-        cstring[3 + i * 2] = s.at(i).cell();
+    std::string string;
+    string.reserve(len);
+    string.push_back((char)0xfe);
+    string.push_back((char)0xff);
+    for (auto element : s) {
+        string.push_back(element.row());
+        string.push_back(element.cell());
     }
-    GooString *ret = new GooString(cstring, len);
-    gfree(cstring);
-    return ret;
+    return std::make_unique<GooString>(std::move(string));
 }
 
-GooString *QStringToGooString(const QString &s)
+std::unique_ptr<GooString> QStringToGooString(const QString &s)
 {
     int len = s.length();
     char *cstring = (char *)gmallocn(s.length(), sizeof(char));
     for (int i = 0; i < len; ++i) {
         cstring[i] = s.at(i).unicode();
     }
-    GooString *ret = new GooString(cstring, len);
+    std::unique_ptr<GooString> ret = std::make_unique<GooString>(cstring, len);
     gfree(cstring);
     return ret;
 }
 
-GooString *QDateTimeToUnicodeGooString(const QDateTime &dt)
+std::unique_ptr<GooString> QDateTimeToUnicodeGooString(const QDateTime &dt)
 {
     if (!dt.isValid()) {
         return nullptr;

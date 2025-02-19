@@ -29,7 +29,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2018 Greg Knight <lyngvi@gmail.com>
-// Copyright (C) 2019, 2022, 2023 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2022-2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2023 Even Rouault <even.rouault@mines-paris.org>
 //
 // To see a description of the changes please see the Changelog file that
@@ -125,25 +125,25 @@ void formatDoubleSmallAware(double x, char *buf, int bufSize, int prec, bool tri
 
 //------------------------------------------------------------------------
 
-std::unique_ptr<GooString> GooString::format(const char *fmt, ...)
+std::string GooString::format(const char *fmt, ...)
 {
-    auto s = std::make_unique<GooString>();
+    GooString s;
 
     va_list argList;
     va_start(argList, fmt);
-    s->appendfv(fmt, argList);
+    s.appendfv(fmt, argList);
     va_end(argList);
 
-    return s;
+    return s.toStr();
 }
 
-std::unique_ptr<GooString> GooString::formatv(const char *fmt, va_list argList)
+std::string GooString::formatv(const char *fmt, va_list argList)
 {
-    auto s = std::make_unique<GooString>();
+    GooString s;
 
-    s->appendfv(fmt, argList);
+    s.appendfv(fmt, argList);
 
-    return s;
+    return s.toStr();
 }
 
 GooString *GooString::appendf(const char *fmt, ...)
@@ -619,19 +619,4 @@ std::string GooString::toLowerCase(const std::string &s)
     std::string newString = s;
     lowerCase(newString);
     return s;
-}
-
-void GooString::prependUnicodeMarker()
-{
-    insert(0, "\xFE\xFF", 2);
-}
-
-bool GooString::startsWith(const char *prefix) const
-{
-    return startsWith(toStr(), prefix);
-}
-
-bool GooString::endsWith(const char *suffix) const
-{
-    return endsWith(toStr(), suffix);
 }

@@ -1,11 +1,12 @@
 /* poppler-link.h: qt interface to poppler
- * Copyright (C) 2006, 2013, 2016, 2018, 2019, 2021, 2022, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2006, 2013, 2016, 2018, 2019, 2021, 2022, 2024, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2007-2008, 2010, Pino Toscano <pino@kde.org>
  * Copyright (C) 2010, 2012, Guillermo Amaral <gamaral@kdab.com>
  * Copyright (C) 2012, Tobias Koenig <tokoe@kdab.com>
  * Copyright (C) 2013, Anthony Granger <grangeranthony@gmail.com>
  * Copyright (C) 2018 Intevation GmbH <intevation@intevation.de>
  * Copyright (C) 2020, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -33,6 +34,8 @@
 #include <QtCore/QVector>
 #include "poppler-export.h"
 
+#include <memory>
+
 struct Ref;
 class MediaRendition;
 
@@ -51,6 +54,8 @@ class LinkDestinationPrivate;
 class LinkRenditionPrivate;
 class LinkOCGStatePrivate;
 class LinkHidePrivate;
+class LinkResetFormPrivate;
+class LinkSubmitFormPrivate;
 class MediaRendition;
 class MovieAnnotation;
 class ScreenAnnotation;
@@ -199,6 +204,8 @@ public:
         JavaScript, ///< A JavaScript code to be interpreted
         OCGState, ///< An Optional Content Group state change
         Hide, ///< An action to hide a field
+        ResetForm, ///< An action to reset the form \since 24.07
+        SubmitForm, ///< An action to submit a form \since 24.10
     };
 
     /**
@@ -488,7 +495,18 @@ public:
      * \param script the java script code
      * \param annotationReference the object reference of the screen annotation associated with this rendition action
      */
-    LinkRendition(const QRectF &linkArea, ::MediaRendition *rendition, int operation, const QString &script, const Ref annotationReference);
+    [[deprecated]] LinkRendition(const QRectF &linkArea, ::MediaRendition *rendition, int operation, const QString &script, const Ref annotationReference);
+
+    /**
+     * Create a new rendition link.
+     *
+     * \param linkArea the active area of the link
+     * \param rendition the media rendition object.
+     * \param operation the numeric operation (action) (@see ::LinkRendition::RenditionOperation)
+     * \param script the java script code
+     * \param annotationReference the object reference of the screen annotation associated with this rendition action
+     */
+    LinkRendition(const QRectF &linkArea, std::unique_ptr<::MediaRendition> &&rendition, int operation, const QString &script, const Ref annotationReference);
 
     /**
      * Destructor.
@@ -653,6 +671,92 @@ public:
 private:
     Q_DECLARE_PRIVATE(LinkHide)
     Q_DISABLE_COPY(LinkHide)
+};
+
+/**
+ * ResetForm: an action to reset form fields.
+ *
+ * \since 24.07
+ */
+class POPPLER_QT6_EXPORT LinkResetForm : public Link
+{
+    friend class Document;
+
+public:
+    /**
+     * Creates a new ResetForm link. This is only used by Poppler::Page
+     */
+    explicit LinkResetForm(LinkResetFormPrivate *lrfp);
+    /*
+     * Destructor
+     */
+    ~LinkResetForm() override;
+
+    LinkType linkType() const override;
+
+private:
+    Q_DECLARE_PRIVATE(LinkResetForm)
+    Q_DISABLE_COPY(LinkResetForm)
+};
+
+/**
+ * SubmitForm : An action to submit a form.
+ *
+ * \since 24.10
+ */
+
+class POPPLER_QT6_EXPORT LinkSubmitForm : public Link
+{
+public:
+    enum SubmitFormFlag
+    {
+        NoOpFlag = 0,
+        ExcludeFlag = 1,
+        IncludeNoValueFieldsFlag = 1 << 1,
+        ExportFormatFlag = 1 << 2,
+        GetMethodFlag = 1 << 3,
+        SubmitCoordinatesFlag = 1 << 4,
+        XFDFFlag = 1 << 5,
+        IncludeAppendSavesFlag = 1 << 6,
+        IncludeAnnotationsFlag = 1 << 7,
+        SubmitPDFFlag = 1 << 8,
+        CanonicalFormatFlag = 1 << 9,
+        ExclNonUserAnnotsFlag = 1 << 10,
+        ExclFKeyFlag = 1 << 11,
+        // 13th high bit flag is undefined
+        EmbedFormFlag = 1 << 13,
+    };
+    Q_DECLARE_FLAGS(SubmitFormFlags, SubmitFormFlag)
+
+    /**
+     * Create a new SubmitForm link.
+     */
+    explicit LinkSubmitForm(LinkSubmitFormPrivate *lsfp);
+    /**
+     * Destructor
+     */
+    ~LinkSubmitForm() override;
+
+    LinkType linkType() const override;
+
+    /**
+     * The ids of fields that are to be submitted.
+     */
+    QVector<int> getFieldIds() const;
+
+    /**
+     * The url to which the form is to be submitted.
+     */
+    QString getUrl() const;
+
+    /**
+     * The flags specifying how the form should be submitted.
+     */
+    SubmitFormFlags getFlags() const;
+
+private:
+    Q_DECLARE_PRIVATE(LinkSubmitForm)
+    Q_DISABLE_COPY(LinkSubmitForm)
 };
 
 }

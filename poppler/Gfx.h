@@ -17,14 +17,14 @@
 // Copyright (C) 2007 Iñigo Martínez <inigomartinez@gmail.com>
 // Copyright (C) 2008 Brad Hards <bradh@kde.org>
 // Copyright (C) 2008, 2010 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2009-2013, 2017, 2018, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009-2013, 2017, 2018, 2021, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009, 2010, 2012, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2010 David Benjamin <davidben@mit.edu>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2013 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
-// Copyright (C) 2019, 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2022, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Volker Krause <vkrause@kde.org>
 //
 // To see a description of the changes please see the Changelog file that
@@ -123,8 +123,8 @@ public:
     Object lookupXObjectNF(const char *name);
     Object lookupMarkedContentNF(const char *name);
     Object lookupColorSpace(const char *name);
-    GfxPattern *lookupPattern(const char *name, OutputDev *out, GfxState *state);
-    GfxShading *lookupShading(const char *name, OutputDev *out, GfxState *state);
+    std::unique_ptr<GfxPattern> lookupPattern(const char *name, OutputDev *out, GfxState *state);
+    std::unique_ptr<GfxShading> lookupShading(const char *name, OutputDev *out, GfxState *state);
     Object lookupGState(const char *name);
     Object lookupGStateNF(const char *name);
 
@@ -133,7 +133,7 @@ public:
 private:
     std::shared_ptr<GfxFont> doLookupFont(const char *name) const;
 
-    GfxFontDict *fonts;
+    std::unique_ptr<GfxFontDict> fonts;
     Object xObjDict;
     Object colorSpaceDict;
     Object patternDict;

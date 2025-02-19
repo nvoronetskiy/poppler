@@ -20,6 +20,9 @@
  * Copyright (C) 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
+ * Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+ * Copyright (C) 2024 Stefan Brüns <stefan.bruens@rwth-aachen.de>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,9 +56,11 @@
 #include <QtCore/QDebug>
 #include <QtCore/QFile>
 #include <QtCore/QByteArray>
+#include <QTimeZone>
 
 #include "poppler-form.h"
 #include "poppler-private.h"
+#include "poppler-link-private.h"
 #include "poppler-page-private.h"
 #include "poppler-outline-private.h"
 
@@ -243,9 +248,8 @@ QByteArray Document::fontData(const FontInfo &fi) const
 
         Object refObj(fi.m_data->embRef);
         Object strObj = refObj.fetch(xref);
-        if (strObj.isStream()) {
+        if (strObj.isStream() && strObj.streamReset()) {
             int c;
-            strObj.streamReset();
             while ((c = strObj.streamGetChar()) != EOF) {
                 result.append((char)c);
             }
@@ -272,8 +276,8 @@ bool Document::setInfo(const QString &key, const QString &val)
         return false;
     }
 
-    GooString *goo = QStringToUnicodeGooString(val);
-    m_doc->doc->setDocInfoStringEntry(key.toLatin1().constData(), goo);
+    std::unique_ptr<GooString> goo = QStringToUnicodeGooString(val);
+    m_doc->doc->setDocInfoStringEntry(key.toLatin1().constData(), std::move(goo));
     return true;
 }
 
@@ -594,10 +598,9 @@ QVector<OutlineItem> Document::outline() const
 
 std::unique_ptr<LinkDestination> Document::linkDestination(const QString &name)
 {
-    GooString *namedDest = QStringToGooString(name);
-    LinkDestinationData ldd(nullptr, namedDest, m_doc, false);
+    const std::unique_ptr<GooString> namedDest = QStringToGooString(name);
+    LinkDestinationData ldd(nullptr, namedDest.get(), m_doc, false);
     auto ld = std::make_unique<LinkDestination>(ldd);
-    delete namedDest;
     return ld;
 }
 
@@ -741,6 +744,24 @@ OptContentModel *Document::optionalContentModel()
     return (OptContentModel *)m_doc->m_optContentModel;
 }
 
+void Document::applyResetFormsLink(const LinkResetForm &link)
+{
+    const LinkResetFormPrivate *lrfp = link.d_func();
+    Catalog *catalog = m_doc->doc->getCatalog();
+    if (catalog && catalog->isOk()) {
+        Form *form = catalog->getForm();
+        if (form) {
+            std::vector<std::string> stdStringFields;
+            const QStringList fields = lrfp->m_fields;
+            stdStringFields.reserve(fields.size());
+            for (const auto &field : fields) {
+                stdStringFields.emplace_back(field.toStdString());
+            }
+            form->reset(stdStringFields, lrfp->m_exclude);
+        }
+    }
+}
+
 QStringList Document::scripts() const
 {
     Catalog *catalog = m_doc->doc->getCatalog();
@@ -754,6 +775,36 @@ QStringList Document::scripts() const
         }
     }
     return scripts;
+}
+
+std::unique_ptr<Link> Document::additionalAction(DocumentAdditionalActionsType type) const
+{
+    Catalog::DocumentAdditionalActionsType actionType;
+    switch (type) {
+    case CloseDocument:
+        actionType = Catalog::actionCloseDocument;
+        break;
+    case SaveDocumentStart:
+        actionType = Catalog::actionSaveDocumentStart;
+        break;
+    case SaveDocumentFinish:
+        actionType = Catalog::actionSaveDocumentFinish;
+        break;
+    case PrintDocumentStart:
+        actionType = Catalog::actionPrintDocumentStart;
+        break;
+    case PrintDocumentFinish:
+        actionType = Catalog::actionPrintDocumentFinish;
+        break;
+    default:
+        return {};
+    }
+
+    if (std::unique_ptr<::LinkAction> act = m_doc->doc->getCatalog()->getAdditionalAction(actionType)) {
+        return PageData::convertLinkActionToLink(act.get(), m_doc, QRectF());
+    }
+
+    return {};
 }
 
 bool Document::getPdfId(QByteArray *permanentId, QByteArray *updateId) const
@@ -843,22 +894,22 @@ QDateTime convertDate(const char *dateString)
         QDate d(year, mon, day);
         QTime t(hour, min, sec);
         if (d.isValid() && t.isValid()) {
-            QDateTime dt(d, t, Qt::UTC);
+            int tzSecs = 0;
             if (tz) {
                 // then we have some form of timezone
                 if ('Z' == tz) {
                     // We are already at UTC
                 } else if ('+' == tz) {
                     // local time is ahead of UTC
-                    dt = dt.addSecs(-1 * ((tzHours * 60) + tzMins) * 60);
+                    tzSecs = (tzHours * 3600) + (tzMins * 60);
                 } else if ('-' == tz) {
                     // local time is behind UTC
-                    dt = dt.addSecs(((tzHours * 60) + tzMins) * 60);
+                    tzSecs = (tzHours * -3600) + (tzMins * -60);
                 } else {
                     qWarning("unexpected tz val");
                 }
             }
-            return dt;
+            return QDateTime(d, t, QTimeZone(tzSecs));
         }
     }
     return QDateTime();

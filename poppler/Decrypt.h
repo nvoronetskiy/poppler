@@ -19,6 +19,8 @@
 // Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2013, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
+// Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -95,7 +97,7 @@ public:
     BaseCryptStream(Stream *strA, const unsigned char *fileKey, CryptAlgorithm algoA, int keyLength, Ref ref);
     ~BaseCryptStream() override;
     StreamKind getKind() const override { return strCrypt; }
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int getChar() override;
     int lookChar() override = 0;
     Goffset getPos() override;
@@ -127,7 +129,7 @@ class EncryptStream : public BaseCryptStream
 public:
     EncryptStream(Stream *strA, const unsigned char *fileKey, CryptAlgorithm algoA, int keyLength, Ref ref);
     ~EncryptStream() override;
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int lookChar() override;
 };
 
@@ -136,7 +138,7 @@ class DecryptStream : public BaseCryptStream
 public:
     DecryptStream(Stream *strA, const unsigned char *fileKey, CryptAlgorithm algoA, int keyLength, Ref ref);
     ~DecryptStream() override;
-    void reset() override;
+    [[nodiscard]] bool reset() override;
     int lookChar() override;
 };
 

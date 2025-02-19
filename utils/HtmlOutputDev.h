@@ -14,7 +14,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2006, 2007, 2009, 2012, 2018-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2006, 2007, 2009, 2012, 2018-2022. 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2008, 2009 Warren Toomey <wkt@tuhs.org>
 // Copyright (C) 2009, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
@@ -25,7 +25,7 @@
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
-// Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2019, 2024 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
@@ -46,7 +46,7 @@
 #include "Catalog.h"
 #include "UnicodeMap.h"
 
-#define xoutRound(x) ((int)(x + 0.5))
+#define xoutRound(x) ((int)((x) + 0.5))
 
 #define DOCTYPE "<!DOCTYPE html>"
 
@@ -145,7 +145,7 @@ public:
     void AddLink(const HtmlLink &x) { links->AddLink(x); }
 
     // add an image to the current page
-    void addImage(std::unique_ptr<GooString> &&fname, GfxState *state);
+    void addImage(std::string &&fname, GfxState *state);
 
     // number of images on the current page
     int getNumImages() { return imgList.size(); }
@@ -287,7 +287,7 @@ private:
     // recognized.
     static std::string mapEncodingToHtml(const std::string &encoding);
     void doProcessLink(AnnotLink *link);
-    GooString *getLinkDest(AnnotLink *link);
+    std::unique_ptr<GooString> getLinkDest(AnnotLink *link);
     void dumpMetaVars(FILE *);
     void doFrame(int firstPage);
     bool newHtmlOutlineLevel(FILE *output, const std::vector<OutlineItem *> *outlines, int level = 1);
@@ -295,7 +295,7 @@ private:
     int getOutlinePageNum(OutlineItem *item);
     void drawJpegImage(GfxState *state, Stream *str);
     void drawPngImage(GfxState *state, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool isMask = false);
-    std::unique_ptr<GooString> createImageFileName(const char *ext);
+    std::string createImageFileName(const char *ext);
 
     FILE *fContentsFrame;
     FILE *page; // html file

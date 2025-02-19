@@ -14,13 +14,14 @@
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2009 Petr Gajdos <pgajdos@novell.com>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
-// Copyright (C) 2009 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2011 Andreas Hartmetz <ahartmetz@gmail.com>
 // Copyright (C) 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2015 Dmytro Morgun <lztoad@gmail.com>
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -51,7 +52,7 @@
 
 SplashFontEngine::SplashFontEngine(bool enableFreeType, bool enableFreeTypeHinting, bool enableSlightHinting, bool aa)
 {
-    std::fill(fontCache.begin(), fontCache.end(), nullptr);
+    std::ranges::fill(fontCache, nullptr);
 
     if (enableFreeType) {
         ftEngine = SplashFTFontEngine::init(aa, enableFreeTypeHinting, enableSlightHinting);
@@ -66,17 +67,15 @@ SplashFontEngine::~SplashFontEngine()
         delete font;
     }
 
-    if (ftEngine) {
-        delete ftEngine;
-    }
+    delete ftEngine;
 }
 
-SplashFontFile *SplashFontEngine::getFontFile(SplashFontFileID *id)
+SplashFontFile *SplashFontEngine::getFontFile(const SplashFontFileID &id)
 {
     for (auto font : fontCache) {
         if (font) {
             SplashFontFile *fontFile = font->getFontFile();
-            if (fontFile && fontFile->getID()->matches(id)) {
+            if (fontFile && fontFile->getID().matches(id)) {
                 return fontFile;
             }
         }
@@ -84,12 +83,12 @@ SplashFontFile *SplashFontEngine::getFontFile(SplashFontFileID *id)
     return nullptr;
 }
 
-SplashFontFile *SplashFontEngine::loadType1Font(SplashFontFileID *idA, SplashFontSrc *src, const char **enc)
+SplashFontFile *SplashFontEngine::loadType1Font(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, const char **enc, int faceIndex)
 {
     SplashFontFile *fontFile = nullptr;
 
     if (ftEngine) {
-        fontFile = ftEngine->loadType1Font(idA, src, enc);
+        fontFile = ftEngine->loadType1Font(std::move(idA), src, enc, faceIndex);
     }
 
     // delete the (temporary) font file -- with Unix hard link
@@ -103,12 +102,12 @@ SplashFontFile *SplashFontEngine::loadType1Font(SplashFontFileID *idA, SplashFon
     return fontFile;
 }
 
-SplashFontFile *SplashFontEngine::loadType1CFont(SplashFontFileID *idA, SplashFontSrc *src, const char **enc)
+SplashFontFile *SplashFontEngine::loadType1CFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, const char **enc, int faceIndex)
 {
     SplashFontFile *fontFile = nullptr;
 
     if (ftEngine) {
-        fontFile = ftEngine->loadType1CFont(idA, src, enc);
+        fontFile = ftEngine->loadType1CFont(std::move(idA), src, enc, faceIndex);
     }
 
     // delete the (temporary) font file -- with Unix hard link
@@ -122,12 +121,12 @@ SplashFontFile *SplashFontEngine::loadType1CFont(SplashFontFileID *idA, SplashFo
     return fontFile;
 }
 
-SplashFontFile *SplashFontEngine::loadOpenTypeT1CFont(SplashFontFileID *idA, SplashFontSrc *src, const char **enc)
+SplashFontFile *SplashFontEngine::loadOpenTypeT1CFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, const char **enc, int faceIndex)
 {
     SplashFontFile *fontFile = nullptr;
 
     if (ftEngine) {
-        fontFile = ftEngine->loadOpenTypeT1CFont(idA, src, enc);
+        fontFile = ftEngine->loadOpenTypeT1CFont(std::move(idA), src, enc, faceIndex);
     }
 
     // delete the (temporary) font file -- with Unix hard link
@@ -141,12 +140,12 @@ SplashFontFile *SplashFontEngine::loadOpenTypeT1CFont(SplashFontFileID *idA, Spl
     return fontFile;
 }
 
-SplashFontFile *SplashFontEngine::loadCIDFont(SplashFontFileID *idA, SplashFontSrc *src)
+SplashFontFile *SplashFontEngine::loadCIDFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, int faceIndex)
 {
     SplashFontFile *fontFile = nullptr;
 
     if (ftEngine) {
-        fontFile = ftEngine->loadCIDFont(idA, src);
+        fontFile = ftEngine->loadCIDFont(std::move(idA), src, faceIndex);
     }
 
     // delete the (temporary) font file -- with Unix hard link
@@ -160,12 +159,12 @@ SplashFontFile *SplashFontEngine::loadCIDFont(SplashFontFileID *idA, SplashFontS
     return fontFile;
 }
 
-SplashFontFile *SplashFontEngine::loadOpenTypeCFFFont(SplashFontFileID *idA, SplashFontSrc *src, int *codeToGID, int codeToGIDLen)
+SplashFontFile *SplashFontEngine::loadOpenTypeCFFFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, std::vector<int> &&codeToGID, int faceIndex)
 {
     SplashFontFile *fontFile = nullptr;
 
     if (ftEngine) {
-        fontFile = ftEngine->loadOpenTypeCFFFont(idA, src, codeToGID, codeToGIDLen);
+        fontFile = ftEngine->loadOpenTypeCFFFont(std::move(idA), src, std::move(codeToGID), faceIndex);
     }
 
     // delete the (temporary) font file -- with Unix hard link
@@ -179,16 +178,12 @@ SplashFontFile *SplashFontEngine::loadOpenTypeCFFFont(SplashFontFileID *idA, Spl
     return fontFile;
 }
 
-SplashFontFile *SplashFontEngine::loadTrueTypeFont(SplashFontFileID *idA, SplashFontSrc *src, int *codeToGID, int codeToGIDLen, int faceIndex)
+SplashFontFile *SplashFontEngine::loadTrueTypeFont(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *src, std::vector<int> &&codeToGID, int faceIndex)
 {
     SplashFontFile *fontFile = nullptr;
 
     if (ftEngine) {
-        fontFile = ftEngine->loadTrueTypeFont(idA, src, codeToGID, codeToGIDLen, faceIndex);
-    }
-
-    if (!fontFile) {
-        gfree(codeToGID);
+        fontFile = ftEngine->loadTrueTypeFont(std::move(idA), src, std::move(codeToGID), faceIndex);
     }
 
     // delete the (temporary) font file -- with Unix hard link
@@ -231,7 +226,7 @@ SplashFont *SplashFontEngine::getFont(SplashFontFile *fontFile, const SplashCoor
     }
 
     // Try to find the font in the cache
-    auto fontIt = std::find_if(fontCache.begin(), fontCache.end(), [&](const SplashFont *font) { return font && font->matches(fontFile, mat, textMat); });
+    auto fontIt = std::ranges::find_if(fontCache, [&](const SplashFont *font) { return font && font->matches(fontFile, mat, textMat); });
 
     // The requested font has been found in the cache
     if (fontIt != fontCache.end()) {
@@ -244,7 +239,7 @@ SplashFont *SplashFontEngine::getFont(SplashFontFile *fontFile, const SplashCoor
     if (fontCache.back()) {
         delete fontCache.back();
     }
-    std::rotate(fontCache.begin(), fontCache.end() - 1, fontCache.end());
+    std::ranges::rotate(fontCache, fontCache.end() - 1);
 
     fontCache[0] = newFont;
     return fontCache[0];

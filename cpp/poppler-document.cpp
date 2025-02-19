@@ -5,6 +5,7 @@
  * Copyright (C) 2018, 2020, Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2019, Masamichi Hosoda <trueroad@trueroad.jp>
  * Copyright (C) 2019, 2020, Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -165,7 +166,7 @@ bool document::unlock(const std::string &owner_password, const std::string &user
 {
     if (d->is_locked) {
         document_private *newdoc = nullptr;
-        if (d->doc_data.size() > 0) {
+        if (!d->doc_data.empty()) {
             newdoc = new document_private(&d->doc_data, owner_password, user_password);
         } else if (d->raw_doc_data) {
             newdoc = new document_private(d->raw_doc_data, d->raw_doc_data_length, owner_password, user_password);
@@ -295,7 +296,7 @@ ustring document::info_key(const std::string &key) const
     }
 
     std::unique_ptr<GooString> goo_value(d->doc->getDocInfoStringEntry(key.c_str()));
-    if (!goo_value.get()) {
+    if (!goo_value) {
         return ustring();
     }
 
@@ -314,15 +315,13 @@ bool document::set_info_key(const std::string &key, const ustring &val)
         return false;
     }
 
-    GooString *goo_val;
+    std::unique_ptr<GooString> goo_val;
 
-    if (val.empty()) {
-        goo_val = nullptr;
-    } else {
+    if (!val.empty()) {
         goo_val = detail::ustring_to_unicode_GooString(val);
     }
 
-    d->doc->setDocInfoStringEntry(key.c_str(), goo_val);
+    d->doc->setDocInfoStringEntry(key.c_str(), std::move(goo_val));
     return true;
 }
 
@@ -340,7 +339,7 @@ time_type document::info_date(const std::string &key) const
     }
 
     std::unique_ptr<GooString> goo_date(d->doc->getDocInfoStringEntry(key.c_str()));
-    if (!goo_date.get()) {
+    if (!goo_date) {
         return time_type(-1);
     }
 
@@ -361,7 +360,7 @@ time_t document::info_date_t(const std::string &key) const
     }
 
     std::unique_ptr<GooString> goo_date(d->doc->getDocInfoStringEntry(key.c_str()));
-    if (!goo_date.get()) {
+    if (!goo_date) {
         return time_t(-1);
     }
 
@@ -381,16 +380,14 @@ bool document::set_info_date(const std::string &key, time_type val)
         return false;
     }
 
-    GooString *goo_date;
+    std::unique_ptr<GooString> goo_date;
 
-    if (val == time_type(-1)) {
-        goo_date = nullptr;
-    } else {
+    if (val != time_type(-1)) {
         time_t t = static_cast<time_t>(val);
         goo_date = timeToDateString(&t);
     }
 
-    d->doc->setDocInfoStringEntry(key.c_str(), goo_date);
+    d->doc->setDocInfoStringEntry(key.c_str(), std::move(goo_date));
     return true;
 }
 
@@ -407,15 +404,13 @@ bool document::set_info_date_t(const std::string &key, time_t val)
         return false;
     }
 
-    GooString *goo_date;
+    std::unique_ptr<GooString> goo_date;
 
-    if (val == time_t(-1)) {
-        goo_date = nullptr;
-    } else {
+    if (val != time_t(-1)) {
         goo_date = timeToDateString(&val);
     }
 
-    d->doc->setDocInfoStringEntry(key.c_str(), goo_date);
+    d->doc->setDocInfoStringEntry(key.c_str(), std::move(goo_date));
     return true;
 }
 
@@ -432,7 +427,7 @@ ustring document::get_title() const
     }
 
     std::unique_ptr<GooString> goo_title(d->doc->getDocInfoTitle());
-    if (!goo_title.get()) {
+    if (!goo_title) {
         return ustring();
     }
 
@@ -451,15 +446,13 @@ bool document::set_title(const ustring &title)
         return false;
     }
 
-    GooString *goo_title;
+    std::unique_ptr<GooString> goo_title;
 
-    if (title.empty()) {
-        goo_title = nullptr;
-    } else {
+    if (!title.empty()) {
         goo_title = detail::ustring_to_unicode_GooString(title);
     }
 
-    d->doc->setDocInfoTitle(goo_title);
+    d->doc->setDocInfoTitle(std::move(goo_title));
     return true;
 }
 
@@ -476,7 +469,7 @@ ustring document::get_author() const
     }
 
     std::unique_ptr<GooString> goo_author(d->doc->getDocInfoAuthor());
-    if (!goo_author.get()) {
+    if (!goo_author) {
         return ustring();
     }
 
@@ -495,15 +488,13 @@ bool document::set_author(const ustring &author)
         return false;
     }
 
-    GooString *goo_author;
+    std::unique_ptr<GooString> goo_author;
 
-    if (author.empty()) {
-        goo_author = nullptr;
-    } else {
+    if (!author.empty()) {
         goo_author = detail::ustring_to_unicode_GooString(author);
     }
 
-    d->doc->setDocInfoAuthor(goo_author);
+    d->doc->setDocInfoAuthor(std::move(goo_author));
     return true;
 }
 
@@ -520,7 +511,7 @@ ustring document::get_subject() const
     }
 
     std::unique_ptr<GooString> goo_subject(d->doc->getDocInfoSubject());
-    if (!goo_subject.get()) {
+    if (!goo_subject) {
         return ustring();
     }
 
@@ -539,15 +530,13 @@ bool document::set_subject(const ustring &subject)
         return false;
     }
 
-    GooString *goo_subject;
+    std::unique_ptr<GooString> goo_subject;
 
-    if (subject.empty()) {
-        goo_subject = nullptr;
-    } else {
+    if (!subject.empty()) {
         goo_subject = detail::ustring_to_unicode_GooString(subject);
     }
 
-    d->doc->setDocInfoSubject(goo_subject);
+    d->doc->setDocInfoSubject(std::move(goo_subject));
     return true;
 }
 
@@ -564,7 +553,7 @@ ustring document::get_keywords() const
     }
 
     std::unique_ptr<GooString> goo_keywords(d->doc->getDocInfoKeywords());
-    if (!goo_keywords.get()) {
+    if (!goo_keywords) {
         return ustring();
     }
 
@@ -583,15 +572,13 @@ bool document::set_keywords(const ustring &keywords)
         return false;
     }
 
-    GooString *goo_keywords;
+    std::unique_ptr<GooString> goo_keywords;
 
-    if (keywords.empty()) {
-        goo_keywords = nullptr;
-    } else {
+    if (!keywords.empty()) {
         goo_keywords = detail::ustring_to_unicode_GooString(keywords);
     }
 
-    d->doc->setDocInfoKeywords(goo_keywords);
+    d->doc->setDocInfoKeywords(std::move(goo_keywords));
     return true;
 }
 
@@ -608,7 +595,7 @@ ustring document::get_creator() const
     }
 
     std::unique_ptr<GooString> goo_creator(d->doc->getDocInfoCreator());
-    if (!goo_creator.get()) {
+    if (!goo_creator) {
         return ustring();
     }
 
@@ -627,15 +614,13 @@ bool document::set_creator(const ustring &creator)
         return false;
     }
 
-    GooString *goo_creator;
+    std::unique_ptr<GooString> goo_creator;
 
-    if (creator.empty()) {
-        goo_creator = nullptr;
-    } else {
+    if (!creator.empty()) {
         goo_creator = detail::ustring_to_unicode_GooString(creator);
     }
 
-    d->doc->setDocInfoCreator(goo_creator);
+    d->doc->setDocInfoCreator(std::move(goo_creator));
     return true;
 }
 
@@ -652,7 +637,7 @@ ustring document::get_producer() const
     }
 
     std::unique_ptr<GooString> goo_producer(d->doc->getDocInfoProducer());
-    if (!goo_producer.get()) {
+    if (!goo_producer) {
         return ustring();
     }
 
@@ -671,15 +656,13 @@ bool document::set_producer(const ustring &producer)
         return false;
     }
 
-    GooString *goo_producer;
+    std::unique_ptr<GooString> goo_producer;
 
-    if (producer.empty()) {
-        goo_producer = nullptr;
-    } else {
+    if (!producer.empty()) {
         goo_producer = detail::ustring_to_unicode_GooString(producer);
     }
 
-    d->doc->setDocInfoProducer(goo_producer);
+    d->doc->setDocInfoProducer(std::move(goo_producer));
     return true;
 }
 
@@ -696,7 +679,7 @@ time_type document::get_creation_date() const
     }
 
     std::unique_ptr<GooString> goo_creation_date(d->doc->getDocInfoCreatDate());
-    if (!goo_creation_date.get()) {
+    if (!goo_creation_date) {
         return time_type(-1);
     }
 
@@ -716,7 +699,7 @@ time_t document::get_creation_date_t() const
     }
 
     std::unique_ptr<GooString> goo_creation_date(d->doc->getDocInfoCreatDate());
-    if (!goo_creation_date.get()) {
+    if (!goo_creation_date) {
         return time_t(-1);
     }
 
@@ -735,16 +718,14 @@ bool document::set_creation_date(time_type creation_date)
         return false;
     }
 
-    GooString *goo_creation_date;
+    std::unique_ptr<GooString> goo_creation_date;
 
-    if (creation_date == time_type(-1)) {
-        goo_creation_date = nullptr;
-    } else {
+    if (creation_date != time_type(-1)) {
         time_t t = static_cast<time_t>(creation_date);
         goo_creation_date = timeToDateString(&t);
     }
 
-    d->doc->setDocInfoCreatDate(goo_creation_date);
+    d->doc->setDocInfoCreatDate(std::move(goo_creation_date));
     return true;
 }
 
@@ -760,15 +741,13 @@ bool document::set_creation_date_t(time_t creation_date)
         return false;
     }
 
-    GooString *goo_creation_date;
+    std::unique_ptr<GooString> goo_creation_date;
 
-    if (creation_date == time_t(-1)) {
-        goo_creation_date = nullptr;
-    } else {
+    if (creation_date != time_t(-1)) {
         goo_creation_date = timeToDateString(&creation_date);
     }
 
-    d->doc->setDocInfoCreatDate(goo_creation_date);
+    d->doc->setDocInfoCreatDate(std::move(goo_creation_date));
     return true;
 }
 
@@ -785,7 +764,7 @@ time_type document::get_modification_date() const
     }
 
     std::unique_ptr<GooString> goo_modification_date(d->doc->getDocInfoModDate());
-    if (!goo_modification_date.get()) {
+    if (!goo_modification_date) {
         return time_type(-1);
     }
 
@@ -805,7 +784,7 @@ time_t document::get_modification_date_t() const
     }
 
     std::unique_ptr<GooString> goo_modification_date(d->doc->getDocInfoModDate());
-    if (!goo_modification_date.get()) {
+    if (!goo_modification_date) {
         return time_t(-1);
     }
 
@@ -824,16 +803,14 @@ bool document::set_modification_date(time_type mod_date)
         return false;
     }
 
-    GooString *goo_mod_date;
+    std::unique_ptr<GooString> goo_mod_date;
 
-    if (mod_date == time_type(-1)) {
-        goo_mod_date = nullptr;
-    } else {
+    if (mod_date != time_type(-1)) {
         time_t t = static_cast<time_t>(mod_date);
         goo_mod_date = timeToDateString(&t);
     }
 
-    d->doc->setDocInfoModDate(goo_mod_date);
+    d->doc->setDocInfoModDate(std::move(goo_mod_date));
     return true;
 }
 
@@ -849,15 +826,13 @@ bool document::set_modification_date_t(time_t mod_date)
         return false;
     }
 
-    GooString *goo_mod_date;
+    std::unique_ptr<GooString> goo_mod_date;
 
-    if (mod_date == time_t(-1)) {
-        goo_mod_date = nullptr;
-    } else {
+    if (mod_date != time_t(-1)) {
         goo_mod_date = timeToDateString(&mod_date);
     }
 
-    d->doc->setDocInfoModDate(goo_mod_date);
+    d->doc->setDocInfoModDate(std::move(goo_mod_date));
     return true;
 }
 
@@ -928,7 +903,7 @@ bool document::has_permission(permission_enum which) const
 ustring document::metadata() const
 {
     std::unique_ptr<GooString> md(d->doc->getCatalog()->readMetadata());
-    if (md.get()) {
+    if (md) {
         return detail::unicode_GooString_to_ustring(md.get());
     }
     return ustring();
@@ -1028,7 +1003,7 @@ std::vector<font_info> document::fonts() const
     font_iterator it(0, d);
     while (it.has_next()) {
         const std::vector<font_info> l = it.next();
-        std::copy(l.begin(), l.end(), std::back_inserter(result));
+        std::ranges::copy(l, std::back_inserter(result));
     }
     return result;
 }

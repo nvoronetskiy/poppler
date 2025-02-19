@@ -9,9 +9,10 @@
  * Copyright (C) 2013, Anthony Granger <grangeranthony@gmail.com>
  * Copyright (C) 2018, Dileep Sankhla <sankhla.dileep96@gmail.com>
  * Copyright (C) 2020, Katarina Behrens <Katarina.Behrens@cib.de>
- * Copyright (C) 2020, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
+ * Copyright (C) 2020, 2024, Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021, Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2021, Mahmoud Ahmed Khalil <mahmoudkhalil11@gmail.com>
+ * Copyright (C) 2024, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -43,6 +44,7 @@
 #include <QtGui/QColor>
 #include <QtGui/QFont>
 #include "poppler-export.h"
+#include "poppler-converter.h"
 
 #include <memory>
 
@@ -56,6 +58,7 @@ class LineAnnotationPrivate;
 class GeomAnnotationPrivate;
 class HighlightAnnotationPrivate;
 class StampAnnotationPrivate;
+class SignatureAnnotationPrivate;
 class InkAnnotationPrivate;
 class LinkAnnotationPrivate;
 class CaretAnnotationPrivate;
@@ -769,6 +772,94 @@ private:
     explicit StampAnnotation(StampAnnotationPrivate &dd);
     Q_DECLARE_PRIVATE(StampAnnotation)
     Q_DISABLE_COPY(StampAnnotation)
+};
+
+/**
+ * \short Signature annotation.
+ *
+ * A signature annotation. By creating one and adding it to the page you can create
+ * an unsigned signature field.
+ *
+ * To read existing signature fields use FormFieldSignature.
+ *
+ * \since 24.10
+ */
+class POPPLER_QT6_EXPORT SignatureAnnotation : public Annotation
+{
+    friend class AnnotationPrivate;
+
+public:
+    /**
+     * \since 24.10
+     */
+    enum SigningResult
+    {
+        SigningSuccess, ///< No error
+        FieldAlreadySigned, ///< Trying to sign a field that is already signed
+        GenericSigningError, ///< Unclassified error
+        InternalError, ///< Unexpected error, likely a bug in poppler \since 24.12
+        KeyMissing, ///< Key not found (Either the input key is not from the list or the available keys has changed underneath) \since 24.12
+        WriteFailed, ///< Write failed (permissions, faulty disk, ...) \since 24.12
+        UserCancelled, ///< User cancelled the process \since 24.12
+    };
+
+    SignatureAnnotation();
+    ~SignatureAnnotation() override;
+    SubType subType() const override;
+
+    void setText(const QString &text);
+    void setLeftText(const QString &text);
+
+    /**
+     * Default: 10
+     */
+    double fontSize() const;
+    void setFontSize(double fontSize);
+
+    /**
+     * Default: 20
+     */
+    double leftFontSize() const;
+    void setLeftFontSize(double fontSize);
+
+    /**
+     * Default: red
+     */
+    QColor fontColor() const;
+    void setFontColor(const QColor &color);
+
+    /**
+     * Default: red
+     */
+    QColor borderColor() const;
+    void setBorderColor(const QColor &color);
+
+    /**
+     * border width in points
+     *
+     * Default: 1.5
+     */
+    double borderWidth() const;
+    void setBorderWidth(double width);
+
+    /**
+     * Default: QColor(240, 240, 240)
+     */
+    QColor backgroundColor() const;
+    void setBackgroundColor(const QColor &color);
+
+    QString imagePath() const;
+    void setImagePath(const QString &imagePath);
+
+    QString fieldPartialName() const;
+    void setFieldPartialName(const QString &fieldPartialName);
+
+    [[nodiscard]] SigningResult sign(const QString &outputFileName, const PDFConverter::NewSignatureData &data);
+
+private:
+    explicit SignatureAnnotation(SignatureAnnotationPrivate &dd);
+    Q_DECLARE_PRIVATE(SignatureAnnotation)
+    Q_DISABLE_COPY(SignatureAnnotation)
 };
 
 /**

@@ -26,6 +26,8 @@
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020, 2021 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2024 Pablo Correa Gómez <ablocorrea@hotmail.com>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -87,7 +89,7 @@ public:
     // Construct a new PageAttrs object by merging a dictionary
     // (of type Pages or Page) into another PageAttrs object.  If
     // <attrs> is nullptr, uses defaults.
-    PageAttrs(PageAttrs *attrs, Dict *dict);
+    PageAttrs(const PageAttrs *attrs, Dict *dict);
 
     // Destructor.
     ~PageAttrs();
@@ -140,7 +142,7 @@ class POPPLER_PRIVATE_EXPORT Page
 {
 public:
     // Constructor.
-    Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, PageAttrs *attrsA, Form *form);
+    Page(PDFDoc *docA, int numA, Object &&pageDict, Ref pageRefA, std::unique_ptr<PageAttrs> attrsA, Form *form);
 
     // Destructor.
     ~Page();
@@ -172,6 +174,9 @@ public:
     Dict *getSeparationInfo() { return attrs->getSeparationInfo(); }
     PDFDoc *getDoc() { return doc; }
     Ref getRef() { return pageRef; }
+
+    // Keep in API. This is used by GDAL
+    const Object &getPageObj() const { return pageObj; }
 
     // Get resource dictionary.
     Dict *getResourceDict();
@@ -220,8 +225,8 @@ public:
 
     std::unique_ptr<LinkAction> getAdditionalAction(PageAdditionalActionsType type);
 
-    Gfx *createGfx(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool printing, bool (*abortCheckCbk)(void *data), void *abortCheckCbkData,
-                   XRef *xrefA = nullptr);
+    std::unique_ptr<Gfx> createGfx(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, int sliceX, int sliceY, int sliceW, int sliceH, bool (*abortCheckCbk)(void *data), void *abortCheckCbkData,
+                                   XRef *xrefA = nullptr);
 
     // Display a page.
     void display(OutputDev *out, double hDPI, double vDPI, int rotate, bool useMediaBox, bool crop, bool printing, bool (*abortCheckCbk)(void *data) = nullptr, void *abortCheckCbkData = nullptr,
@@ -255,7 +260,7 @@ private:
     Object pageObj; // page dictionary
     const Ref pageRef; // page reference
     int num; // page number
-    PageAttrs *attrs; // page attributes
+    std::unique_ptr<PageAttrs> attrs; // page attributes
     Annots *annots; // annotations
     Object annotsObj; // annotations array
     Object contents; // page contents
@@ -271,7 +276,7 @@ private:
     // i.e. the PDF document does not have a FormField associated with them. We
     // create standalone FormFields to contain those special FormWidgets, as
     // they are 'de facto' being used to implement tooltips. See #34
-    std::vector<FormField *> standaloneFields;
+    std::vector<std::unique_ptr<FormField>> standaloneFields;
     void loadStandaloneFields(Annots *annotations, Form *form);
 };
 

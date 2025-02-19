@@ -5,7 +5,7 @@
  * Copyright (C) 2020 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2021 André Guerreiro <aguerreiro1985@gmail.com>
  * Copyright (C) 2021, 2023 Marek Kasik <mkasik@redhat.com>
- * Copyright (C) 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2023-2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -362,11 +362,9 @@ gchar *poppler_form_field_get_mapping_name(PopplerFormField *field)
  **/
 gchar *poppler_form_field_get_name(PopplerFormField *field)
 {
-    GooString *tmp;
-
     g_return_val_if_fail(POPPLER_IS_FORM_FIELD(field), NULL);
 
-    tmp = field->widget->getFullyQualifiedName();
+    const GooString *tmp = field->widget->getFullyQualifiedName();
 
     return tmp ? _poppler_goo_string_to_utf8(tmp) : nullptr;
 }
@@ -399,6 +397,8 @@ gchar *poppler_form_field_get_alternate_ui_name(PopplerFormField *field)
  *
  * PopplerCertificateInfo contains detailed info about a signing certificate.
  *
+ * Since 24.10 this type supports g_autoptr
+ *
  * Since: 23.07.0
  */
 struct _PopplerCertificateInfo
@@ -423,6 +423,8 @@ G_DEFINE_BOXED_TYPE(PopplerCertificateInfo, poppler_certificate_info, poppler_ce
  *
  * PopplerSignatureInfo contains detailed info about a signature
  * contained in a form field.
+ *
+ * Since 24.10 this type supports g_autoptr
  *
  * Since: 21.12.0
  **/
@@ -449,8 +451,9 @@ static PopplerSignatureInfo *_poppler_form_field_signature_validate(PopplerFormF
 
     sig_field = static_cast<FormFieldSignature *>(field->widget->getField());
 
-    sig_info = sig_field->validateSignature(flags & POPPLER_SIGNATURE_VALIDATION_FLAG_VALIDATE_CERTIFICATE, force_revalidation, -1, flags & POPPLER_SIGNATURE_VALIDATION_FLAG_WITHOUT_OCSP_REVOCATION_CHECK,
-                                            flags & POPPLER_SIGNATURE_VALIDATION_FLAG_USE_AIA_CERTIFICATE_FETCH);
+    sig_info = sig_field->validateSignatureAsync(flags & POPPLER_SIGNATURE_VALIDATION_FLAG_VALIDATE_CERTIFICATE, force_revalidation, -1, flags & POPPLER_SIGNATURE_VALIDATION_FLAG_WITHOUT_OCSP_REVOCATION_CHECK,
+                                                 flags & POPPLER_SIGNATURE_VALIDATION_FLAG_USE_AIA_CERTIFICATE_FETCH, {});
+    CertificateValidationStatus certificateStatus = sig_field->validateSignatureResult();
 
     poppler_sig_info = g_new0(PopplerSignatureInfo, 1);
     switch (sig_info->getSignatureValStatus()) {
@@ -477,7 +480,7 @@ static PopplerSignatureInfo *_poppler_form_field_signature_validate(PopplerFormF
         break;
     }
 
-    switch (sig_info->getCertificateValStatus()) {
+    switch (certificateStatus) {
     case CERTIFICATE_TRUSTED:
         poppler_sig_info->cert_status = POPPLER_CERTIFICATE_TRUSTED;
         break;
@@ -562,7 +565,7 @@ PopplerSignatureInfo *poppler_form_field_signature_validate_sync(PopplerFormFiel
     PopplerSignatureInfo *signature_info;
     GTask *task;
 
-    g_return_val_if_fail(error == NULL || *error == NULL, NULL);
+    g_return_val_if_fail(error == nullptr || *error == nullptr, NULL);
 
     task = g_task_new(field, cancellable, nullptr, nullptr);
     g_task_set_task_data(task, GINT_TO_POINTER(flags), nullptr);
@@ -581,8 +584,8 @@ PopplerSignatureInfo *poppler_form_field_signature_validate_sync(PopplerFormFiel
  * @field: a #PopplerFormField that represents a signature annotation
  * @flags: #PopplerSignatureValidationFlags flags influencing process of validation of the field signature
  * @cancellable: (nullable): optional #GCancellable object
- * @callback: (scope async): a #GAsyncReadyCallback to call when the signature is validated
- * @user_data: (closure): the data to pass to callback function
+ * @callback: (scope async) (closure user_data): a #GAsyncReadyCallback to call when the signature is validated
+ * @user_data: the data to pass to callback function
  *
  * Asynchronously validates the cryptographic signature contained in @signature_field.
  *
@@ -638,7 +641,7 @@ PopplerSignatureInfo *poppler_signature_info_copy(const PopplerSignatureInfo *si
 {
     PopplerSignatureInfo *new_info;
 
-    g_return_val_if_fail(siginfo != NULL, NULL);
+    g_return_val_if_fail(siginfo != nullptr, NULL);
 
     new_info = g_new(PopplerSignatureInfo, 1);
     new_info->sig_status = siginfo->sig_status;
@@ -682,7 +685,7 @@ void poppler_signature_info_free(PopplerSignatureInfo *siginfo)
  **/
 PopplerSignatureStatus poppler_signature_info_get_signature_status(const PopplerSignatureInfo *siginfo)
 {
-    g_return_val_if_fail(siginfo != NULL, POPPLER_SIGNATURE_GENERIC_ERROR);
+    g_return_val_if_fail(siginfo != nullptr, POPPLER_SIGNATURE_GENERIC_ERROR);
 
     return siginfo->sig_status;
 }
@@ -699,7 +702,7 @@ PopplerSignatureStatus poppler_signature_info_get_signature_status(const Poppler
  **/
 PopplerCertificateInfo *poppler_signature_info_get_certificate_info(const PopplerSignatureInfo *siginfo)
 {
-    g_return_val_if_fail(siginfo != NULL, NULL);
+    g_return_val_if_fail(siginfo != nullptr, NULL);
 
     return siginfo->certificate_info;
 }
@@ -716,7 +719,7 @@ PopplerCertificateInfo *poppler_signature_info_get_certificate_info(const Popple
  **/
 PopplerCertificateStatus poppler_signature_info_get_certificate_status(const PopplerSignatureInfo *siginfo)
 {
-    g_return_val_if_fail(siginfo != NULL, POPPLER_CERTIFICATE_GENERIC_ERROR);
+    g_return_val_if_fail(siginfo != nullptr, POPPLER_CERTIFICATE_GENERIC_ERROR);
 
     return siginfo->cert_status;
 }
@@ -733,7 +736,7 @@ PopplerCertificateStatus poppler_signature_info_get_certificate_status(const Pop
  **/
 const gchar *poppler_signature_info_get_signer_name(const PopplerSignatureInfo *siginfo)
 {
-    g_return_val_if_fail(siginfo != NULL, NULL);
+    g_return_val_if_fail(siginfo != nullptr, NULL);
 
     return siginfo->signer_name;
 }
@@ -754,7 +757,7 @@ const gchar *poppler_signature_info_get_signer_name(const PopplerSignatureInfo *
  **/
 GDateTime *poppler_signature_info_get_local_signing_time(const PopplerSignatureInfo *siginfo)
 {
-    g_return_val_if_fail(siginfo != NULL, NULL);
+    g_return_val_if_fail(siginfo != nullptr, NULL);
 
     return siginfo->local_signing_time;
 }
@@ -815,17 +818,15 @@ gchar *poppler_form_field_text_get_text(PopplerFormField *field)
  **/
 void poppler_form_field_text_set_text(PopplerFormField *field, const gchar *text)
 {
-    GooString *goo_tmp;
     gchar *tmp;
     gsize length = 0;
 
     g_return_if_fail(field->widget->getType() == formText);
 
     tmp = text ? g_convert(text, -1, "UTF-16BE", "UTF-8", nullptr, &length, nullptr) : nullptr;
-    goo_tmp = new GooString(tmp, length);
+    std::unique_ptr<GooString> goo_tmp = std::make_unique<GooString>(tmp, length);
     g_free(tmp);
-    static_cast<FormWidgetText *>(field->widget)->setContent(goo_tmp);
-    delete goo_tmp;
+    static_cast<FormWidgetText *>(field->widget)->setContent(std::move(goo_tmp));
 }
 
 /**
@@ -1071,17 +1072,15 @@ void poppler_form_field_choice_toggle_item(PopplerFormField *field, gint index)
  **/
 void poppler_form_field_choice_set_text(PopplerFormField *field, const gchar *text)
 {
-    GooString *goo_tmp;
     gchar *tmp;
     gsize length = 0;
 
     g_return_if_fail(field->widget->getType() == formChoice);
 
     tmp = text ? g_convert(text, -1, "UTF-16BE", "UTF-8", nullptr, &length, nullptr) : nullptr;
-    goo_tmp = new GooString(tmp, length);
+    std::unique_ptr<GooString> goo_tmp = std::make_unique<GooString>(tmp, length);
     g_free(tmp);
-    static_cast<FormWidgetChoice *>(field->widget)->setEditChoice(goo_tmp);
-    delete goo_tmp;
+    static_cast<FormWidgetChoice *>(field->widget)->setEditChoice(std::move(goo_tmp));
 }
 
 /**
@@ -1102,8 +1101,11 @@ gchar *poppler_form_field_choice_get_text(PopplerFormField *field)
     return tmp ? _poppler_goo_string_to_utf8(tmp) : nullptr;
 }
 
-/* Signing Data */
-
+/**
+ * PopplerSigningData:
+ *
+ * Since 24.10 this type supports g_autoptr
+ */
 struct _PopplerSigningData
 {
     char *destination_filename;

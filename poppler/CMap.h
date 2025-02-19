@@ -14,7 +14,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2008 Koji Otani <sho@bbr.jp>
-// Copyright (C) 2009, 2018-2020, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2018-2020, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2012, 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 //
@@ -46,15 +46,15 @@ class CMap
 public:
     // Parse a CMap from <obj>, which can be a name or a stream.  Sets
     // the initial reference count to 1.  Returns NULL on failure.
-    static std::shared_ptr<CMap> parse(CMapCache *cache, const GooString *collectionA, Object *obj);
+    static std::shared_ptr<CMap> parse(CMapCache *cache, const GooString &collectionA, Object *obj);
 
     // Create the CMap specified by <collection> and <cMapName>.  Sets
     // the initial reference count to 1.  Returns NULL on failure.
-    static std::shared_ptr<CMap> parse(CMapCache *cache, const GooString *collectionA, const GooString *cMapNameA);
+    static std::shared_ptr<CMap> parse(CMapCache *cache, const GooString &collectionA, const GooString &cMapNameA);
 
     // Parse a CMap from <str>.  Sets the initial reference count to 1.
     // Returns NULL on failure.
-    static std::shared_ptr<CMap> parse(CMapCache *cache, const GooString *collectionA, Stream *str);
+    static std::shared_ptr<CMap> parse(CMapCache *cache, const GooString &collectionA, Stream *str);
 
     ~CMap();
 
@@ -62,13 +62,13 @@ public:
     CMap &operator=(const CMap &) = delete;
 
     // Return collection name (<registry>-<ordering>).
-    const GooString *getCollection() const { return collection; }
+    const GooString *getCollection() const { return collection.get(); }
 
-    const GooString *getCMapName() const { return cMapName; }
+    const GooString *getCMapName() const { return cMapName.get(); }
 
     // Return true if this CMap matches the specified <collectionA>, and
     // <cMapNameA>.
-    bool match(const GooString *collectionA, const GooString *cMapNameA);
+    bool match(const GooString &collectionA, const GooString &cMapNameA);
 
     // Return the CID corresponding to the character code starting at
     // <s>, which contains <len> bytes.  Sets *<c> to the char code, and
@@ -82,8 +82,8 @@ public:
 
 private:
     void parse2(CMapCache *cache, int (*getCharFunc)(void *), void *data);
-    CMap(GooString *collectionA, GooString *cMapNameA);
-    CMap(GooString *collectionA, GooString *cMapNameA, int wModeA);
+    CMap(std::unique_ptr<GooString> &&collectionA, std::unique_ptr<GooString> &&cMapNameA);
+    CMap(std::unique_ptr<GooString> &&collectionA, std::unique_ptr<GooString> &&cMapNameA, int wModeA);
     void useCMap(CMapCache *cache, const char *useName);
     void useCMap(CMapCache *cache, Object *obj);
     void copyVector(CMapVectorEntry *dest, CMapVectorEntry *src);
@@ -91,8 +91,8 @@ private:
     void freeCMapVector(CMapVectorEntry *vec);
     void setReverseMapVector(unsigned int startCode, CMapVectorEntry *vec, unsigned int *rmap, unsigned int rmapSize, unsigned int ncand);
 
-    GooString *collection;
-    GooString *cMapName;
+    const std::unique_ptr<GooString> collection;
+    const std::unique_ptr<GooString> cMapName;
     bool isIdent; // true if this CMap is an identity mapping,
                   //   or is based on one (via usecmap)
     int wMode; // writing mode (0=horizontal, 1=vertical)
@@ -119,7 +119,7 @@ public:
     // Stream is a stream containing the CMap, can be NULL and
     // this means the CMap will be searched in the CMap files
     // Returns NULL on failure.
-    std::shared_ptr<CMap> getCMap(const GooString *collection, const GooString *cMapName);
+    std::shared_ptr<CMap> getCMap(const GooString &collection, const GooString &cMapName);
 
 private:
     std::array<std::shared_ptr<CMap>, cMapCacheSize> cache;

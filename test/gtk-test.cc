@@ -31,7 +31,7 @@ static const GOptionEntry options[] = { { "cairo", 'c', 0, G_OPTION_ARG_NONE, &c
 #ifndef G_OS_WIN32
                                         { "fd", 'f', 0, G_OPTION_ARG_NONE, &args_are_fds, "File descriptors", nullptr },
 #endif
-                                        { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &file_arguments, nullptr, "PDF-FILES…" },
+                                        { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, static_cast<void *>(&file_arguments), nullptr, "PDF-FILES…" },
                                         {} };
 
 static GList *view_list = nullptr;
@@ -90,7 +90,7 @@ typedef struct
 // Constants and macros
 //------------------------------------------------------------------------
 
-#define xoutRound(x) ((int)(x + 0.5))
+#define xoutRound(x) ((int)((x) + 0.5))
 
 //------------------------------------------------------------------------
 // GDKSplashOutputDev
@@ -102,7 +102,7 @@ GDKSplashOutputDev::GDKSplashOutputDev(GdkScreen *screen, void (*redrawCbkA)(voi
     redrawCbkData = redrawCbkDataA;
 }
 
-GDKSplashOutputDev::~GDKSplashOutputDev() { }
+GDKSplashOutputDev::~GDKSplashOutputDev() = default;
 
 void GDKSplashOutputDev::clear()
 {
@@ -284,11 +284,7 @@ static View *view_new(PopplerDocument *doc)
     view->drawing_area = gtk_drawing_area_new();
     sw = gtk_scrolled_window_new(nullptr, nullptr);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-#if GTK_CHECK_VERSION(3, 7, 8)
     gtk_container_add(GTK_CONTAINER(sw), view->drawing_area);
-#else
-    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(sw), view->drawing_area);
-#endif
     gtk_widget_show(view->drawing_area);
 
     gtk_box_pack_end(GTK_BOX(vbox), sw, TRUE, TRUE, 0);

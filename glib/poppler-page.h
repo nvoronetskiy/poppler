@@ -37,9 +37,13 @@ GType poppler_page_get_type(void) G_GNUC_CONST;
 POPPLER_PUBLIC
 void poppler_page_render(PopplerPage *page, cairo_t *cairo);
 POPPLER_PUBLIC
-void poppler_page_render_for_printing(PopplerPage *page, cairo_t *cairo);
+void poppler_page_render_full(PopplerPage *page, cairo_t *cairo, gboolean printing, PopplerRenderAnnotsFlags flags);
 POPPLER_PUBLIC
-void poppler_page_render_for_printing_with_options(PopplerPage *page, cairo_t *cairo, PopplerPrintFlags options);
+void poppler_page_render_for_printing(PopplerPage *page, cairo_t *cairo);
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+POPPLER_PUBLIC
+void poppler_page_render_for_printing_with_options(PopplerPage *page, cairo_t *cairo, PopplerPrintFlags options) G_GNUC_DEPRECATED_FOR(poppler_page_render_full);
+G_GNUC_END_IGNORE_DEPRECATIONS
 POPPLER_PUBLIC
 cairo_surface_t *poppler_page_get_thumbnail(PopplerPage *page);
 POPPLER_PUBLIC
@@ -123,6 +127,8 @@ GList *poppler_page_get_text_attributes_for_area(PopplerPage *page, PopplerRecta
  *
  * A #PopplerRectangle is used to describe
  * locations on a page and bounding boxes
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerRectangle
 {
@@ -153,6 +159,8 @@ gboolean poppler_rectangle_find_get_ignored_hyphen(const PopplerRectangle *recta
  * @y: y coordinate
  *
  * A #PopplerPoint is used to describe a location point on a page
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerPoint
 {
@@ -187,6 +195,8 @@ void poppler_point_free(PopplerPoint *point);
  *  A #PopplerQuadrilateral is used to describe rectangle-like polygon
  *  with arbitrary inclination on a page.
  *
+ *  Since 24.10 this type supports g_autoptr
+ *
  *  Since: 0.26
  **/
 struct _PopplerQuadrilateral
@@ -217,6 +227,8 @@ void poppler_quadrilateral_free(PopplerQuadrilateral *quad);
  *
  * A #PopplerColor describes a RGB color. Color components
  * are values between 0 and 65535
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerColor
 {
@@ -248,6 +260,8 @@ void poppler_color_free(PopplerColor *color);
  * A #PopplerTextAttributes is used to describe text attributes of a range of text
  *
  * Since: 0.18
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerTextAttributes
 {
@@ -279,6 +293,8 @@ void poppler_text_attributes_free(PopplerTextAttributes *text_attrs);
  *
  * A #PopplerLinkMapping structure represents the location
  * of @action on the page
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerLinkMapping
 {
@@ -319,6 +335,8 @@ void poppler_link_mapping_free(PopplerLinkMapping *mapping);
  *
  * A #PopplerPageTransition structures describes a visual transition
  * to use when moving between pages during a presentation
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerPageTransition
 {
@@ -351,6 +369,8 @@ void poppler_page_transition_free(PopplerPageTransition *transition);
  *
  * A #PopplerImageMapping structure represents the location
  * of an image on the page
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerImageMapping
 {
@@ -377,6 +397,8 @@ void poppler_image_mapping_free(PopplerImageMapping *mapping);
  *
  * A #PopplerFormFieldMapping structure represents the location
  * of @field on the page
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerFormFieldMapping
 {
@@ -403,6 +425,8 @@ void poppler_form_field_mapping_free(PopplerFormFieldMapping *mapping);
  *
  * A #PopplerAnnotMapping structure represents the location
  * of @annot on the page
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerAnnotMapping
 {
@@ -420,5 +444,16 @@ POPPLER_PUBLIC
 void poppler_annot_mapping_free(PopplerAnnotMapping *mapping);
 
 G_END_DECLS
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerRectangle, poppler_rectangle_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerPoint, poppler_point_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerQuadrilateral, poppler_quadrilateral_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerColor, poppler_color_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerTextAttributes, poppler_text_attributes_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerLinkMapping, poppler_link_mapping_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerPageTransition, poppler_page_transition_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerImageMapping, poppler_image_mapping_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerFormFieldMapping, poppler_form_field_mapping_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerAnnotMapping, poppler_annot_mapping_free)
 
 #endif /* __POPPLER_PAGE_H__ */

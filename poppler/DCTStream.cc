@@ -13,6 +13,8 @@
 // Copyright 2012, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2020 Lluís Batlle i Rossell <viric@viric.name>
+// Copyright 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -114,11 +116,11 @@ void DCTStream::init()
     row_buffer = nullptr;
 }
 
-void DCTStream::reset()
+bool DCTStream::reset()
 {
     int row_stride;
 
-    str->reset();
+    bool success = str->reset();
 
     if (row_buffer) {
         jpeg_destroy_decompress(&cinfo);
@@ -137,7 +139,7 @@ void DCTStream::reset()
             c = str->getChar();
             if (c == -1) {
                 error(errSyntaxError, -1, "Could not find start of jpeg data");
-                return;
+                return false;
             }
             if (c != 0xFF) {
                 c = 0;
@@ -187,6 +189,8 @@ void DCTStream::reset()
             row_buffer = cinfo.mem->alloc_sarray((j_common_ptr)&cinfo, JPOOL_IMAGE, row_stride, 1);
         }
     }
+
+    return success;
 }
 
 bool DCTStream::readLine()

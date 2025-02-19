@@ -3,7 +3,7 @@
 // FontInfo.cc
 //
 // Copyright (C) 2005, 2006 Kristian Høgsberg <krh@redhat.com>
-// Copyright (C) 2005-2008, 2010, 2017-2020, 2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005-2008, 2010, 2017-2020, 2023-2025 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Brad Hards <bradh@frogmouth.net>
 // Copyright (C) 2006 Kouhei Sutou <kou@cozmixng.org>
 // Copyright (C) 2009 Pino Toscano <pino@kde.org>
@@ -51,7 +51,7 @@ FontInfoScanner::FontInfoScanner(PDFDoc *docA, int firstPage)
     currentPage = firstPage + 1;
 }
 
-FontInfoScanner::~FontInfoScanner() { }
+FontInfoScanner::~FontInfoScanner() = default;
 
 std::vector<FontInfo *> FontInfoScanner::scan(int nPages)
 {
@@ -98,23 +98,13 @@ std::vector<FontInfo *> FontInfoScanner::scan(int nPages)
 
 void FontInfoScanner::scanFonts(XRef *xrefA, Dict *resDict, std::vector<FontInfo *> *fontsList)
 {
-    GfxFontDict *gfxFontDict;
-
     // scan the fonts in this resource dictionary
-    gfxFontDict = nullptr;
-    const Object &fontObj = resDict->lookupNF("Font");
-    if (fontObj.isRef()) {
-        Object obj2 = fontObj.fetch(xrefA);
-        if (obj2.isDict()) {
-            Ref r = fontObj.getRef();
-            gfxFontDict = new GfxFontDict(xrefA, &r, obj2.getDict());
-        }
-    } else if (fontObj.isDict()) {
-        gfxFontDict = new GfxFontDict(xrefA, nullptr, fontObj.getDict());
-    }
-    if (gfxFontDict) {
-        for (int i = 0; i < gfxFontDict->getNumFonts(); ++i) {
-            if (const std::shared_ptr<GfxFont> &font = gfxFontDict->getFont(i)) {
+    Ref fontDictRef;
+    const Object &fontObj = resDict->lookup("Font", &fontDictRef);
+    if (fontObj.isDict()) {
+        GfxFontDict gfxFontDict(xrefA, fontDictRef, fontObj.getDict());
+        for (int i = 0; i < gfxFontDict.getNumFonts(); ++i) {
+            if (const std::shared_ptr<GfxFont> &font = gfxFontDict.getFont(i)) {
                 Ref fontRef = *font->getID();
 
                 // add this font to the list if not already found
@@ -123,7 +113,6 @@ void FontInfoScanner::scanFonts(XRef *xrefA, Dict *resDict, std::vector<FontInfo
                 }
             }
         }
-        delete gfxFontDict;
     }
 
     // recursively scan any resource dictionaries in objects in this
@@ -167,7 +156,7 @@ FontInfo::FontInfo(GfxFont *font, XRef *xref)
     // font name
     const std::optional<std::string> &origName = font->getName();
     if (origName) {
-        name = *font->getName();
+        name = *origName;
     }
 
     // font type

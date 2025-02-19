@@ -4,8 +4,10 @@
 //
 // This file is licensed under the GPLv2 or later
 //
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //========================================================================
+
+#include "CryptoSignBackend.h"
 #include "config.h"
 #include "GPGMECryptoSignBackend.h"
 #include "DistinguishedNameParser.h"
@@ -14,6 +16,9 @@
 #include <gpgme++/gpgmepp_version.h>
 #include <gpgme++/signingresult.h>
 #include <gpgme++/engineinfo.h>
+#if DUMP_SIGNATURE_DATA
+#    include <fstream>
+#endif
 
 bool GpgSignatureBackend::hasSufficientVersion()
 {
@@ -132,6 +137,9 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromKey(const GpgM
     case GpgME::Subkey::AlgoELG_E:
     case GpgME::Subkey::AlgoMax:
     case GpgME::Subkey::AlgoUnknown:
+#if GPGMEPP_VERSION > ((1 << 16) | (24 << 8) | (0))
+    case GpgME::Subkey::AlgoKyber:
+#endif
         pkInfo.publicKeyType = OTHERKEY;
     }
     {
@@ -168,6 +176,8 @@ static std::unique_ptr<X509CertificateInfo> getCertificateInfoFromKey(const GpgM
         certificateInfo->setKeyLocation(KeyLocation::Computer);
     }
 
+    certificateInfo->setQualified(subkey.isQualified());
+
     return certificateInfo;
 }
 
@@ -183,9 +193,18 @@ std::unique_ptr<CryptoSign::SigningInterface> GpgSignatureBackend::createSigning
     return std::make_unique<GpgSignatureCreation>(certID);
 }
 
-std::unique_ptr<CryptoSign::VerificationInterface> GpgSignatureBackend::createVerificationHandler(std::vector<unsigned char> &&pkcs7)
+std::unique_ptr<CryptoSign::VerificationInterface> GpgSignatureBackend::createVerificationHandler(std::vector<unsigned char> &&pkcs7, CryptoSign::SignatureType type)
 {
-    return std::make_unique<GpgSignatureVerification>(std::move(pkcs7));
+    switch (type) {
+    case CryptoSign::SignatureType::unknown_signature_type:
+    case CryptoSign::SignatureType::unsigned_signature_field:
+        return {};
+    case CryptoSign::SignatureType::ETSI_CAdES_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_detached:
+    case CryptoSign::SignatureType::adbe_pkcs7_sha1:
+        return std::make_unique<GpgSignatureVerification>(std::move(pkcs7));
+    }
+    return {};
 }
 
 std::vector<std::unique_ptr<X509CertificateInfo>> GpgSignatureBackend::getAvailableSigningCertificates()
@@ -224,20 +243,29 @@ void GpgSignatureCreation::addData(unsigned char *dataBlock, int dataLen)
 {
     gpgData.write(dataBlock, dataLen);
 }
-std::optional<GooString> GpgSignatureCreation::signDetached(const std::string &password)
+std::variant<std::vector<unsigned char>, CryptoSign::SigningError> GpgSignatureCreation::signDetached(const std::string &password)
 {
     if (!key) {
-        return {};
+        return CryptoSign::SigningError::KeyMissing;
     }
     gpgData.rewind();
     GpgME::Data signatureData;
     const auto signingResult = gpgContext->sign(gpgData, signatureData, GpgME::SignatureMode::Detached);
     if (!isValidResult(signingResult)) {
-        return {};
+        if (signingResult.error().isCanceled()) {
+            return CryptoSign::SigningError::UserCancelled;
+        } else {
+            return CryptoSign::SigningError::GenericError;
+        }
     }
 
-    const auto signatureString = signatureData.toString();
-    return GooString(std::move(signatureString));
+    auto signatureString = signatureData.toString();
+    return std::vector<unsigned char>(signatureString.begin(), signatureString.end());
+}
+
+CryptoSign::SignatureType GpgSignatureCreation::signatureType() const
+{
+    return CryptoSign::SignatureType::adbe_pkcs7_detached;
 }
 
 std::unique_ptr<X509CertificateInfo> GpgSignatureCreation::getCertificateInfo() const
@@ -252,11 +280,21 @@ GpgSignatureVerification::GpgSignatureVerification(const std::vector<unsigned ch
 {
     gpgContext->setOffline(true);
     signatureData.setEncoding(GpgME::Data::BinaryEncoding);
+#if DUMP_SIGNATURE_DATA
+    static int debugFileCounter = 0;
+    debugFileCounter++;
+    std::ofstream debugSignatureData("/tmp/popplerstuff/signatureData" + std::to_string(debugFileCounter) + ".sig", std::ofstream::out | std::ofstream::trunc | std::ofstream::binary);
+    debugSignedData = std::make_unique<std::ofstream>("/tmp/popplerstuff/signedData" + std::to_string(debugFileCounter) + ".data", std::ofstream::out | std::ofstream::trunc | std::ofstream::binary);
+    debugSignatureData.write(reinterpret_cast<const char *>(p7data.data()), p7data.size());
+#endif
 }
 
 void GpgSignatureVerification::addData(unsigned char *dataBlock, int dataLen)
 {
     signedData.write(dataBlock, dataLen);
+#if DUMP_SIGNATURE_DATA
+    debugSignedData->write(reinterpret_cast<char *>(dataBlock), dataLen);
+#endif
 }
 
 std::unique_ptr<X509CertificateInfo> GpgSignatureVerification::getCertificateInfo() const
@@ -347,32 +385,77 @@ std::chrono::system_clock::time_point GpgSignatureVerification::getSigningTime()
     return std::chrono::system_clock::from_time_t(signature->creationTime());
 }
 
-CertificateValidationStatus GpgSignatureVerification::validateCertificate(std::chrono::system_clock::time_point validation_time, bool ocspRevocationCheck, bool useAIACertFetch)
+void GpgSignatureVerification::validateCertificateAsync(std::chrono::system_clock::time_point validation_time, bool ocspRevocationCheck, bool useAIACertFetch, const std::function<void()> &doneFunction)
 {
+    cachedValidationStatus.reset();
     if (!gpgResult) {
-        return CERTIFICATE_NOT_VERIFIED;
+        validationStatus = std::async([doneFunction]() {
+            if (doneFunction) {
+                doneFunction();
+            }
+            return CERTIFICATE_NOT_VERIFIED;
+        });
+        return;
     }
     if (gpgResult->error()) {
-        return CERTIFICATE_GENERIC_ERROR;
+        validationStatus = std::async([doneFunction]() {
+            if (doneFunction) {
+                doneFunction();
+            }
+            return CERTIFICATE_GENERIC_ERROR;
+        });
+        return;
     }
     const auto signature = getSignature(gpgResult.value(), 0);
     if (!signature) {
-        return CERTIFICATE_GENERIC_ERROR;
+        validationStatus = std::async([doneFunction]() {
+            if (doneFunction) {
+                doneFunction();
+            }
+            return CERTIFICATE_GENERIC_ERROR;
+        });
+        return;
     }
-    const auto offline = gpgContext->offline();
-    gpgContext->setOffline((!ocspRevocationCheck) || useAIACertFetch);
-    const auto key = signature->key(true, true);
-    gpgContext->setOffline(offline);
-    if (key.isExpired()) {
-        return CERTIFICATE_EXPIRED;
+    std::string keyFP = fromCharPtr(signature->key().primaryFingerprint());
+    validationStatus = std::async([keyFP = std::move(keyFP), doneFunction, ocspRevocationCheck, useAIACertFetch]() {
+        auto context = GpgME::Context::create(GpgME::CMS);
+        context->setOffline((!ocspRevocationCheck) || useAIACertFetch);
+        context->setKeyListMode(GpgME::KeyListMode::Local | GpgME::KeyListMode::Validate);
+        GpgME::Error e;
+        const auto key = context->key(keyFP.c_str(), e, false);
+        if (doneFunction) {
+            doneFunction();
+        }
+        if (e.isCanceled()) {
+            return CERTIFICATE_NOT_VERIFIED;
+        }
+        if (e) {
+            return CERTIFICATE_GENERIC_ERROR;
+        }
+        if (key.isExpired()) {
+            return CERTIFICATE_EXPIRED;
+        }
+        if (key.isRevoked()) {
+            return CERTIFICATE_REVOKED;
+        }
+        if (key.isBad()) {
+            return CERTIFICATE_NOT_VERIFIED;
+        }
+        return CERTIFICATE_TRUSTED;
+    });
+}
+
+CertificateValidationStatus GpgSignatureVerification::validateCertificateResult()
+{
+    if (cachedValidationStatus) {
+        return cachedValidationStatus.value();
     }
-    if (key.isRevoked()) {
-        return CERTIFICATE_REVOKED;
-    }
-    if (key.isBad()) {
+    if (!validationStatus.valid()) {
         return CERTIFICATE_NOT_VERIFIED;
     }
-    return CERTIFICATE_TRUSTED;
+    validationStatus.wait();
+    cachedValidationStatus = validationStatus.get();
+    return cachedValidationStatus.value();
 }
 
 SignatureValidationStatus GpgSignatureVerification::validateSignature()

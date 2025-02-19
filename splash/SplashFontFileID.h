@@ -12,6 +12,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2018 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -34,7 +35,7 @@ public:
     virtual ~SplashFontFileID();
     SplashFontFileID(const SplashFontFileID &) = delete;
     SplashFontFileID &operator=(const SplashFontFileID &) = delete;
-    virtual bool matches(SplashFontFileID *id) = 0;
+    virtual bool matches(const SplashFontFileID &id) const = 0;
 };
 
 #endif

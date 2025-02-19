@@ -6,6 +6,8 @@
  * Copyright (C) 2017-2019 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2018 Suzuki Toshiya <mpsuzuki@hiroshima-u.ac.jp>
  * Copyright (C) 2020 Adam Reichold <adam.reichold@t-online.de>
+ * Copyright (C) 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,8 +26,9 @@
 
 #include "poppler-private.h"
 
-#include "GooString.h"
+#include "goo/GooString.h"
 #include "Page.h"
+#include "UTF.h"
 
 #include <ctime>
 #include <iostream>
@@ -63,8 +66,8 @@ ustring detail::unicode_GooString_to_ustring(const GooString *str)
     const char *data = str->c_str();
     const int len = str->getLength();
 
-    const bool is_unicodeLE = str->hasUnicodeMarkerLE();
-    const bool is_unicode = str->hasUnicodeMarker() || is_unicodeLE;
+    const bool is_unicodeLE = hasUnicodeByteOrderMarkLE(str->toStr());
+    const bool is_unicode = hasUnicodeByteOrderMark(str->toStr()) || is_unicodeLE;
     int i = is_unicode ? 2 : 0;
     ustring::size_type ret_len = len - i;
     if (is_unicode) {
@@ -101,7 +104,7 @@ ustring detail::unicode_to_ustring(const Unicode *u, int length)
     return str;
 }
 
-GooString *detail::ustring_to_unicode_GooString(const ustring &str)
+std::unique_ptr<GooString> detail::ustring_to_unicode_GooString(const ustring &str)
 {
     const size_t len = str.size() * 2 + 2;
     const ustring::value_type *me = str.data();
@@ -112,6 +115,5 @@ GooString *detail::ustring_to_unicode_GooString(const ustring &str)
         ba[i * 2 + 2] = ((*me >> 8) & 0xff);
         ba[i * 2 + 3] = (*me & 0xff);
     }
-    GooString *goo = new GooString(&ba[0], len);
-    return goo;
+    return std::make_unique<GooString>(&ba[0], len);
 }

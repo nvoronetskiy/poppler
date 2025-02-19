@@ -16,7 +16,7 @@
 // Copyright (C) 2006, 2008 Pino Toscano <pino@kde.org>
 // Copyright (C) 2007, 2010, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2008 Hugo Mercier <hmercier31@gmail.com>
-// Copyright (C) 2008-2010, 2012-2014, 2016-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008-2010, 2012-2014, 2016-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
 // Copyright (C) 2009 Ilya Gorenbein <igorenbein@finjan.com>
 // Copyright (C) 2012 Tobias Koening <tobias.koenig@kdab.com>
@@ -25,6 +25,8 @@
 // Copyright (C) 2018, 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2020 Marek Kasik <mkasik@redhat.com>
+// Copyright (C) 2024 Pratham Gandhi <ppg.1382@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -133,6 +135,10 @@ std::unique_ptr<LinkAction> LinkAction::parseAction(const Object *obj, const std
         // ResetForm action
     } else if (obj2.isName("ResetForm")) {
         action = std::make_unique<LinkResetForm>(obj);
+
+        // SubmitForm action
+    } else if (obj2.isName("SubmitForm")) {
+        action = std::make_unique<LinkSubmitForm>(obj);
 
         // unknown action
     } else if (obj2.isName()) {
@@ -418,7 +424,7 @@ LinkGoTo::LinkGoTo(const Object *destObj)
     if (destObj->isName()) {
         namedDest = std::make_unique<GooString>(destObj->getName());
     } else if (destObj->isString()) {
-        namedDest = std::unique_ptr<GooString>(destObj->getString()->copy());
+        namedDest = destObj->getString()->copy();
 
         // destination dictionary
     } else if (destObj->isArray()) {
@@ -444,14 +450,14 @@ LinkGoToR::LinkGoToR(Object *fileSpecObj, Object *destObj)
     // get file name
     Object obj1 = getFileSpecNameForPlatform(fileSpecObj);
     if (obj1.isString()) {
-        fileName = std::unique_ptr<GooString>(obj1.getString()->copy());
+        fileName = obj1.getString()->copy();
     }
 
     // named destination
     if (destObj->isName()) {
         namedDest = std::make_unique<GooString>(destObj->getName());
     } else if (destObj->isString()) {
-        namedDest = std::unique_ptr<GooString>(destObj->getString()->copy());
+        namedDest = destObj->getString()->copy();
 
         // destination dictionary
     } else if (destObj->isArray()) {
@@ -480,7 +486,7 @@ LinkLaunch::LinkLaunch(const Object *actionObj)
         if (!obj1.isNull()) {
             Object obj3 = getFileSpecNameForPlatform(&obj1);
             if (obj3.isString()) {
-                fileName = std::unique_ptr<GooString>(obj3.getString()->copy());
+                fileName = obj3.getString()->copy();
             }
         } else {
 #ifdef _WIN32
@@ -494,11 +500,11 @@ LinkLaunch::LinkLaunch(const Object *actionObj)
                 Object obj2 = obj1.dictLookup("F");
                 Object obj3 = getFileSpecNameForPlatform(&obj2);
                 if (obj3.isString()) {
-                    fileName = std::unique_ptr<GooString>(obj3.getString()->copy());
+                    fileName = obj3.getString()->copy();
                 }
                 obj2 = obj1.dictLookup("P");
                 if (obj2.isString()) {
-                    params = std::unique_ptr<GooString>(obj2.getString()->copy());
+                    params = obj2.getString()->copy();
                 }
             } else {
                 error(errSyntaxWarning, -1, "Bad launch-type link action");
@@ -530,7 +536,7 @@ LinkURI::LinkURI(const Object *uriObj, const std::optional<std::string> &baseURI
             // relative URI
             if (baseURI) {
                 uri = *baseURI;
-                if (uri.size() > 0) {
+                if (!uri.empty()) {
                     char c = uri.back();
                     if (c != '/' && c != '?') {
                         uri += '/';
@@ -714,7 +720,7 @@ LinkRendition::LinkRendition(const Object *obj)
                 operation = PlayRendition;
                 break;
             }
-        } else if (js == "") {
+        } else if (js.empty()) {
             error(errSyntaxWarning, -1, "Invalid Rendition action: no OP or JS field defined");
         }
     }
@@ -749,7 +755,7 @@ Object LinkJavaScript::createObject(XRef *xref, const std::string &js)
 {
     Dict *linkDict = new Dict(xref);
     linkDict->add("S", Object(objName, "JavaScript"));
-    linkDict->add("JS", Object(new GooString(js)));
+    linkDict->add("JS", Object(std::make_unique<GooString>(js)));
 
     return Object(linkDict);
 }
@@ -868,6 +874,55 @@ LinkResetForm::LinkResetForm(const Object *obj)
 }
 
 LinkResetForm::~LinkResetForm() = default;
+
+//------------------------------------------------------------------------
+// LinkSubmitForm
+//------------------------------------------------------------------------
+
+LinkSubmitForm::LinkSubmitForm(const Object *obj)
+{
+    if (!obj->isDict()) {
+        return;
+    }
+
+    const Object objFields = obj->dictLookup("Fields");
+    if (objFields.isArray()) {
+        fields.resize(objFields.arrayGetLength());
+        for (int i = 0; i < objFields.arrayGetLength(); ++i) {
+            const Object &objNF = objFields.arrayGetNF(i);
+            if (objNF.isName()) {
+                fields[i] = std::string(objNF.getName());
+            } else if (objNF.isString()) {
+                fields[i] = objNF.getString()->toStr();
+            } else if (objNF.isRef()) {
+                fields[i] = std::to_string(objNF.getRef().num);
+                fields[i].append(" ");
+                fields[i].append(std::to_string(objNF.getRef().gen));
+                fields[i].append(" R");
+            } else {
+                error(errSyntaxWarning, -1, "LinkSubmitForm: unexpected Field type");
+            }
+        }
+    }
+
+    Object objFileSpecification = obj->dictLookup("F");
+    if (objFileSpecification.isDict()) {
+        objFileSpecification = objFileSpecification.dictLookup("F");
+        if (objFileSpecification.isString()) {
+            url = objFileSpecification.getString()->toStr();
+        }
+    } else if (objFileSpecification.isString()) {
+        url = objFileSpecification.getString()->toStr();
+    }
+
+    const Object objFlags = obj->dictLookup("Flags");
+    if (objFlags.isInt()) {
+        flags = objFlags.getInt();
+    }
+    // It is the responsibility of the frontend to remove fields that have NoExport flag set.
+}
+
+LinkSubmitForm::~LinkSubmitForm() = default;
 
 //------------------------------------------------------------------------
 // LinkUnknown

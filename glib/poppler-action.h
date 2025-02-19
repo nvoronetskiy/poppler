@@ -175,6 +175,8 @@ typedef struct _PopplerActionResetForm PopplerActionResetForm;
  * with poppler_named_dest_to_bytestring() first.
  * Also note that @named_dest does not have a defined encoding and
  * is not in a form suitable to be displayed to the user.
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 struct _PopplerDest
 {
@@ -407,6 +409,8 @@ struct _PopplerActionResetForm
  * PopplerAction:
  *
  * A generic wrapper for actions that exposes only #PopplerActionType.
+ *
+ * Since 24.10 this type supports g_autoptr
  */
 union _PopplerAction {
     PopplerActionType type;
@@ -450,5 +454,8 @@ POPPLER_PUBLIC
 guint8 *poppler_named_dest_to_bytestring(const char *name, gsize *length);
 
 G_END_DECLS
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerAction, poppler_action_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PopplerDest, poppler_dest_free)
 
 #endif /* __POPPLER_GLIB_H__ */

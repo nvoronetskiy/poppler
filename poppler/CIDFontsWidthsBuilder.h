@@ -5,6 +5,7 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2024, 2025 Albert Astals Cid <aacid@kde.org>
 //========================================================================
 
 #ifndef CIDFontsWidthsBuilder_H
@@ -14,6 +15,7 @@
 #include <vector>
 #include <variant>
 #include <algorithm>
+#include <ranges>
 #include <cassert>
 
 /** Class to help build the widths array as defined in
@@ -77,7 +79,7 @@ public:
 private:
     void finish()
     {
-        while (m_currentSegment.m_values.size()) {
+        while (!m_currentSegment.m_values.empty()) {
             segmentDone();
         }
         m_currentSegment = {};
@@ -87,7 +89,7 @@ private:
         // How many elements at the end has this
         int uniqueElementsFromEnd(int value)
         {
-            auto lastDifferent = std::find_if(m_values.rbegin(), m_values.rend(), [value](auto &&element) { return element != value; });
+            auto lastDifferent = std::ranges::find_if(std::ranges::reverse_view(m_values), [value](auto &&element) { return element != value; });
             return std::distance(m_values.rbegin(), lastDifferent);
         }
 
@@ -146,19 +148,21 @@ private:
             if (differentValues || m_values.size() < 4) {
                 std::vector<int> savedValues;
                 if (m_values.size() >= 4) {
-                    auto lastDifferent = std::find_if(m_values.rbegin(), m_values.rend(), [value = m_values.back()](auto &&element) { return element != value; });
+                    auto lastDifferent = std::ranges::find_if(std::ranges::reverse_view(m_values), [value = m_values.back()](auto &&element) { return element != value; });
                     if (std::distance(m_values.rbegin(), lastDifferent) >= 3) {
                         savedValues.push_back(m_values.back());
                         m_values.pop_back();
-                        while (m_values.size() && m_values.back() == savedValues.back()) {
+                        while (!m_values.empty() && m_values.back() == savedValues.back()) {
                             savedValues.push_back(m_values.back());
                             m_values.pop_back();
                         }
                     }
                 }
 
+                assert(m_firstIndex.has_value());
                 ListSegment segment { m_firstIndex.value(), std::move(m_values) };
                 if (!savedValues.empty()) {
+                    assert(m_lastIndex.has_value());
                     m_firstIndex = m_lastIndex.value() - savedValues.size() + 1;
                 } else {
                     m_firstIndex = {};
@@ -168,6 +172,8 @@ private:
                 differentValues = false;
                 return segment;
             } else {
+                assert(m_firstIndex.has_value());
+                assert(m_lastIndex.has_value());
                 auto segment = RangeSegment { m_firstIndex.value(), m_lastIndex.value(), m_values.back() };
                 m_values.clear();
                 m_firstIndex = {};

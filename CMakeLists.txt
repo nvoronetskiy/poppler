@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22.0 FATAL_ERROR)
 
 project(poppler)
 
@@ -39,23 +39,24 @@ if (ECM_FOUND)
     endif()
 endif()
 
-set(POPPLER_MAJOR_VERSION "24")
-set(POPPLER_MINOR_VERSION_STRING "03")
+set(POPPLER_MAJOR_VERSION "25")
+set(POPPLER_MINOR_VERSION_STRING "02")
 # We want the string version to have 08 but the integer version can't have a leading 0 since otherwise it's considered octal
 # So strip a leading 0 if found in POPPLER_MINOR_VERSION_STRING and store the result in POPPLER_MINOR_VERSION
 string(REGEX REPLACE "^0?(.+)$" "\\1" POPPLER_MINOR_VERSION "${POPPLER_MINOR_VERSION_STRING}")
-set(POPPLER_MICRO_VERSION "0")
+set(POPPLER_MICRO_VERSION "90")
 set(POPPLER_VERSION "${POPPLER_MAJOR_VERSION}.${POPPLER_MINOR_VERSION_STRING}.${POPPLER_MICRO_VERSION}")
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_LINK_DEPENDS_NO_SHARED TRUE)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
+set(CMAKE_VERIFY_INTERFACE_HEADER_SETS ON)
 
 
 # command line switches
@@ -84,6 +85,7 @@ option(ENABLE_ZLIB_UNCOMPRESS "Use zlib to uncompress flate streams (not totally
 option(USE_FLOAT "Use single precision arithmetic in the Splash backend" OFF)
 option(BUILD_SHARED_LIBS "Build poppler as a shared library" ON)
 option(RUN_GPERF_IF_PRESENT "Run gperf if it is found" ON)
+option(INSTALL_GLIB_DEMO "Whether to install the poppler-glib-demo program." OFF)
 if(WIN32)
   option(ENABLE_RELOCATABLE "Do not hardcode the poppler library location (on Windows)." ON)
 else()
@@ -142,10 +144,10 @@ set(TEXTOUT_WORD_LIST ON)
 
 # setting the minimum required versions for some components
 set(CAIRO_VERSION "1.16.0")
-set(GLIB_REQUIRED "2.64")
+set(GLIB_REQUIRED "2.72")
 set(GTK_REQUIRED "3.24")
 set(GDK_PIXBUF_REQUIRED "2.40")
-set(FREETYPE_VERSION "2.10")
+set(FREETYPE_VERSION "2.11")
 set(FONTCONFIG_VERSION "2.13")
 
 find_package(Freetype ${FREETYPE_VERSION} REQUIRED)
@@ -166,7 +168,7 @@ endmacro()
 
 find_soft_mandatory_package(ENABLE_NSS3 NSS3 3.68)
 find_soft_mandatory_package(ENABLE_GPGME Gpgmepp 1.19)
-find_soft_mandatory_package(ENABLE_LIBTIFF TIFF 4.1)
+find_soft_mandatory_package(ENABLE_LIBTIFF TIFF 4.3)
 
 macro_optional_find_package(JPEG)
 macro_optional_find_package(PNG)
@@ -208,7 +210,7 @@ else()
   message(FATAL_ERROR "Invalid ENABLE_DCTDECODER value.")
 endif()
 
-set(QT5_VERSION "5.12") # Update QT_DISABLE_DEPRECATED_BEFORE in qt5/CMakeLists.txt when changing this
+set(QT5_VERSION "5.15")
 find_soft_mandatory_package(ENABLE_QT5 Qt5Core ${QT5_VERSION})
 find_soft_mandatory_package(ENABLE_QT5 Qt5Gui ${QT5_VERSION})
 find_soft_mandatory_package(ENABLE_QT5 Qt5Xml ${QT5_VERSION})
@@ -225,7 +227,7 @@ find_soft_mandatory_package(ENABLE_QT6 Qt6Test ${QT6_VERSION})
 # Check for Cairo rendering backend
 macro_optional_find_package(Cairo ${CAIRO_VERSION})
 
-find_package(Boost 1.71.0)
+find_package(Boost 1.74.0 CONFIG)
 if(Boost_FOUND)
   set(USE_BOOST_HEADERS ON)
 elseif(ENABLE_BOOST)
@@ -247,7 +249,7 @@ if(CAIRO_FOUND)
   if(ENABLE_GLIB)
     if(ENABLE_GOBJECT_INTROSPECTION)
       # Check for introspection
-      macro_optional_find_package(GObjectIntrospection 1.64.0)
+      macro_optional_find_package(GObjectIntrospection 1.72.0)
       set(HAVE_INTROSPECTION ${INTROSPECTION_FOUND})
     endif()
     set(POPPLER_GLIB_DISABLE_DEPRECATED "${POPPLER_GLIB_DISABLE_DEPRECATED} -DG_DISABLE_DEPRECATED")
@@ -320,10 +322,10 @@ else()
 endif()
 set(ENABLE_LIBOPENJPEG "${WITH_OPENJPEG}")
 
-find_soft_mandatory_package(ENABLE_LCMS LCMS2 2.9)
+find_soft_mandatory_package(ENABLE_LCMS LCMS2 2.12)
 set(USE_CMS ${ENABLE_LCMS})
 
-find_soft_mandatory_package(ENABLE_LIBCURL CURL 7.68)
+find_soft_mandatory_package(ENABLE_LIBCURL CURL 7.81)
 set(POPPLER_HAS_CURL_SUPPORT ${ENABLE_LIBCURL})
 
 if(MINGW)
@@ -336,14 +338,6 @@ if(WITH_FONTCONFIGURATION_WIN32)
     add_definitions(-D_WIN32_IE=0x0500)
   endif()
 endif()
-include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}/fofi
-  ${CMAKE_CURRENT_SOURCE_DIR}/goo
-  ${CMAKE_CURRENT_SOURCE_DIR}/poppler
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}/poppler
-)
 
 if(PNG_FOUND)
   set(ENABLE_LIBPNG ON)
@@ -518,7 +512,7 @@ if(Androidlib)
   set(poppler_LIBS ${poppler_LIBS} ${Androidlib})
 endif()
 
-if(JPEG_FOUND)
+if(ENABLE_LIBJPEG)
   set(poppler_SRCS ${poppler_SRCS}
     poppler/DCTStream.cc
   )
@@ -614,7 +608,7 @@ ADD_GPERF_FILE(TimesItalicWidths)
 ADD_GPERF_FILE(TimesRomanWidths)
 ADD_GPERF_FILE(ZapfDingbatsWidths)
 
-set(POPPLER_SOVERSION_NUMBER "135")
+set(POPPLER_SOVERSION_NUMBER "146")
 
 set(LINKER_SCRIPT "${CMAKE_BINARY_DIR}/libpoppler.map")
 configure_file(
@@ -625,6 +619,7 @@ if(MSVC)
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 add_library(poppler ${poppler_SRCS} ${LINKER_SCRIPT})
+target_include_directories(poppler PUBLIC poppler ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/poppler)
 if (OpenJPEG_FOUND)
   # check if we can remove this when we depend on newer openjpeg versions, 2.5 seems fixed
   # target openjp2 may lack interface include directories
@@ -667,22 +662,18 @@ target_link_libraries(poppler LINK_PRIVATE ${poppler_LIBS})
 install(TARGETS poppler RUNTIME DESTINATION bin LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 if(ENABLE_UNSTABLE_API_ABI_HEADERS)
-  install(FILES
+  set(poppler_poppler_installed_headers
     poppler/Annot.h
     poppler/AnnotStampImageHelper.h
     poppler/Array.h
     poppler/CachedFile.h
     poppler/Catalog.h
-    poppler/CharCodeToUnicode.h
-    poppler/CMap.h
+    poppler/CryptoSignBackend.h
     poppler/DateInfo.h
-    poppler/Decrypt.h
     poppler/Dict.h
     poppler/Error.h
-    poppler/FDPDFDocBuilder.h
     poppler/FILECacheLoader.h
     poppler/FileSpec.h
-    poppler/FontEncodingTables.h
     poppler/FontInfo.h
     poppler/Form.h
     poppler/Function.h
@@ -691,17 +682,12 @@ if(ENABLE_UNSTABLE_API_ABI_HEADERS)
     poppler/GfxState.h
     poppler/GfxState_helpers.h
     poppler/GlobalParams.h
-    poppler/Hints.h
-    poppler/JArithmeticDecoder.h
-    poppler/JBIG2Stream.h
+    poppler/HashAlgorithm.h
     poppler/JSInfo.h
     poppler/Lexer.h
     poppler/Link.h
-    poppler/Linearization.h
-    poppler/LocalPDFDocBuilder.h
     poppler/MarkedContentOutputDev.h
     poppler/Movie.h
-    poppler/NameToCharCode.h
     poppler/Object.h
     poppler/OptionalContent.h
     poppler/Outline.h
@@ -715,10 +701,9 @@ if(ENABLE_UNSTABLE_API_ABI_HEADERS)
     poppler/PDFDocFactory.h
     poppler/PopplerCache.h
     poppler/ProfileData.h
-    poppler/PreScanOutputDev.h
-    poppler/PSTokenizer.h
     poppler/Rendition.h
     poppler/CertificateInfo.h
+    poppler/SignatureInfo.h
     poppler/Stream-CCITT.h
     poppler/Stream.h
     poppler/StructElement.h
@@ -737,72 +722,34 @@ if(ENABLE_UNSTABLE_API_ABI_HEADERS)
     poppler/NameToUnicodeTable.h
     poppler/PSOutputDev.h
     poppler/TextOutputDev.h
-    poppler/SecurityHandler.h
     poppler/BBoxOutputDev.h
     poppler/UTF.h
     poppler/Sound.h
-    ${CMAKE_CURRENT_BINARY_DIR}/poppler_private_export.h
-    ${CMAKE_CURRENT_BINARY_DIR}/poppler/poppler-config.h
     poppler/SplashOutputDev.h
-    DESTINATION include/poppler)
-  install(FILES
+    )
+  set(poppler_goo_installed_headers
     goo/GooTimer.h
     goo/GooString.h
     goo/gmem.h
-    goo/gdir.h
     goo/gfile.h
     goo/ImgWriter.h
     goo/GooCheckedOps.h
     goo/GooLikely.h
     goo/gstrtod.h
     goo/grandom.h
-    DESTINATION include/poppler/goo)
-  if(PNG_FOUND)
-    install(FILES
-      goo/PNGWriter.h
-      DESTINATION include/poppler/goo)
-  endif()
-  if(ENABLE_LIBTIFF)
-    install(FILES
-      goo/TiffWriter.h
-      DESTINATION include/poppler/goo)
-  endif()
-  if(JPEG_FOUND)
-    install(FILES
-      goo/JpegWriter.h
-      DESTINATION include/poppler/goo)
-  endif()
-  install(FILES
+    )
+  set(poppler_fofi_installed_headers
     fofi/FoFiBase.h
     fofi/FoFiEncodings.h
     fofi/FoFiTrueType.h
-    fofi/FoFiType1.h
     fofi/FoFiType1C.h
     fofi/FoFiIdentifier.h
-    DESTINATION include/poppler/fofi)
-  if(ENABLE_LIBCURL)
-    install(FILES
-      poppler/CurlCachedFile.h
-      poppler/CurlPDFDocBuilder.h
-      DESTINATION include/poppler)
-  endif()
-  if(OpenJPEG_FOUND)
-    install(FILES
-      poppler/JPEG2000Stream.h
-      DESTINATION include/poppler)
-  else()
-    install(FILES
-      poppler/JPXStream.h
-      DESTINATION include/poppler)
-  endif()
-  install(FILES
+  )
+  set(poppler_splash_installed_headers
     splash/Splash.h
     splash/SplashBitmap.h
     splash/SplashClip.h
     splash/SplashErrorCodes.h
-    splash/SplashFTFont.h
-    splash/SplashFTFontEngine.h
-    splash/SplashFTFontFile.h
     splash/SplashFont.h
     splash/SplashFontEngine.h
     splash/SplashFontFile.h
@@ -811,21 +758,104 @@ if(ENABLE_UNSTABLE_API_ABI_HEADERS)
     splash/SplashMath.h
     splash/SplashPath.h
     splash/SplashPattern.h
-    splash/SplashScreen.h
-    splash/SplashState.h
     splash/SplashTypes.h
-    splash/SplashXPath.h
-    splash/SplashXPathScanner.h
-    DESTINATION include/poppler/splash)
-  if(CAIRO_FOUND)
+  )
+  if(ENABLE_LIBCURL)
+    set(poppler_poppler_installed_headers
+          ${poppler_poppler_installed_headers}
+          poppler/CurlCachedFile.h
+          poppler/CurlPDFDocBuilder.h)
+  endif()
+  if(OpenJPEG_FOUND)
+    set(poppler_poppler_installed_headers ${poppler_poppler_installed_headers} poppler/JPEG2000Stream.h)
+  else()
+    set(poppler_poppler_installed_headers ${poppler_poppler_installed_headers} poppler/JPXStream.h)
+  endif()
+  if(PNG_FOUND)
+    set(poppler_goo_installed_headers ${poppler_goo_installed_headers} goo/PNGWriter.h)
+  endif()
+  if(ENABLE_LIBTIFF)
+    set(poppler_goo_installed_headers ${poppler_goo_installed_headers} goo/TiffWriter.h)
+  endif()
+  if(JPEG_FOUND)
+    set(poppler_goo_installed_headers ${poppler_goo_installed_headers} goo/JpegWriter.h)
+  endif()
+
+  if (${CMAKE_VERSION} VERSION_LESS "3.23.0")
     install(FILES
-      poppler/CairoFontEngine.h
-      poppler/CairoOutputDev.h
-      poppler/CairoRescaleBox.h
-      DESTINATION include/poppler)
+        ${poppler_poppler_installed_headers}
+        ${CMAKE_CURRENT_BINARY_DIR}/poppler/poppler-config.h
+        ${CMAKE_CURRENT_BINARY_DIR}/poppler_private_export.h
+        DESTINATION include/poppler)
+    install(FILES ${poppler_goo_installed_headers} DESTINATION include/poppler/goo)
+    install(FILES ${poppler_fofi_installed_headers} DESTINATION include/poppler/fofi)
+    install(FILES ${poppler_splash_installed_headers} DESTINATION include/poppler/splash)
+  else()
+    target_sources(poppler
+      PUBLIC FILE_SET poppler_poppler
+      TYPE HEADERS
+      BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/poppler
+      FILES ${poppler_poppler_installed_headers}
+    )
+    target_sources(poppler
+      PUBLIC FILE_SET poppler_poppler_config
+      TYPE HEADERS
+      BASE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/poppler
+      FILES ${CMAKE_CURRENT_BINARY_DIR}/poppler/poppler-config.h
+    )
+    target_sources(poppler
+      PUBLIC FILE_SET poppler_export
+      TYPE HEADERS
+      BASE_DIRS ${CMAKE_CURRENT_BINARY_DIR}
+      FILES ${CMAKE_CURRENT_BINARY_DIR}/poppler_private_export.h
+    )
+    target_sources(poppler
+      PUBLIC FILE_SET poppler_goo_fofi_splash
+      TYPE HEADERS
+      BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
+      FILES
+        ${poppler_goo_installed_headers}
+        ${poppler_fofi_installed_headers}
+        ${poppler_splash_installed_headers}
+    )
+    install(TARGETS poppler
+        FILE_SET poppler_poppler DESTINATION include/poppler
+        FILE_SET poppler_export DESTINATION include/poppler
+        FILE_SET poppler_poppler_config DESTINATION include/poppler
+        FILE_SET poppler_goo_fofi_splash DESTINATION include/poppler
+    )
   endif()
 endif()
+function(VERIFY_PUBLIC_HEADERS target subfolder)
+  set(_gen_source_files "")
+  foreach(header_file ${ARGN})
+    get_filename_component(_name ${header_file} NAME_WLE)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/public_if_test/${target}/${_name}.cpp"
+         "#include \"${header_file}\"")
+    file(COPY "${header_file}"
+         DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/public_if_test/${subfolder}/${target}/")
+    list(APPEND _gen_source_files
+       "${CMAKE_CURRENT_BINARY_DIR}/public_if_test/${target}/${_name}.cpp")
+  endforeach()
+  add_library(test_public_interface_${target} MODULE ${_gen_source_files})
+  target_include_directories(test_public_interface_${target} PRIVATE 
+      ${CMAKE_CURRENT_BINARY_DIR}
+      ${CMAKE_CURRENT_BINARY_DIR}/poppler
+      ${CMAKE_CURRENT_BINARY_DIR}/public_if_test/goo
+      ${CMAKE_CURRENT_BINARY_DIR}/public_if_test/fofi
+      ${CMAKE_CURRENT_BINARY_DIR}/public_if_test/splash
+      ${CMAKE_CURRENT_BINARY_DIR}/public_if_test/poppler/poppler
+  )
+  add_dependencies(poppler test_public_interface_${target})
+endfunction()
 
+# Create a build target to check if the '*_public.h' files are self contained
+if(UNIX AND VERIFY_PUBLIC_PRIVATE_HEADERS) 
+  VERIFY_PUBLIC_HEADERS(goo goo ${poppler_goo_installed_headers})
+  VERIFY_PUBLIC_HEADERS(fofi fofi ${poppler_fofi_installed_headers})
+  VERIFY_PUBLIC_HEADERS(splash splash ${poppler_splash_installed_headers})
+  VERIFY_PUBLIC_HEADERS(poppler poppler ${poppler_poppler_installed_headers})
+endif()
 
 if(ENABLE_UTILS)
   add_subdirectory(utils)

@@ -5,11 +5,12 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2010 Hib Eris <hib@hiberis.nl>
-// Copyright 2010, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2010, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright 2019, 2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2021 Christian Persch <chpe@src.gnome.org>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -54,17 +55,17 @@ PDFDocFactory::~PDFDocFactory()
     }
 }
 
-std::unique_ptr<PDFDoc> PDFDocFactory::createPDFDoc(const GooString &uri, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword, void *guiDataA)
+std::unique_ptr<PDFDoc> PDFDocFactory::createPDFDoc(const GooString &uri, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword)
 {
     for (int i = builders->size() - 1; i >= 0; i--) {
         PDFDocBuilder *builder = (*builders)[i];
         if (builder->supports(uri)) {
-            return builder->buildPDFDoc(uri, ownerPassword, userPassword, guiDataA);
+            return builder->buildPDFDoc(uri, ownerPassword, userPassword);
         }
     }
 
     error(errInternal, -1, "Cannot handle URI '{0:t}'.", &uri);
-    return PDFDoc::ErrorPDFDoc(errOpenFile, std::unique_ptr<GooString>(uri.copy()));
+    return PDFDoc::ErrorPDFDoc(errOpenFile, uri.copy());
 }
 
 void PDFDocFactory::registerPDFDocBuilder(PDFDocBuilder *pdfDocBuilder)

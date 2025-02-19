@@ -15,7 +15,7 @@
 // under GPL version 2 or later
 //
 // Copyright (C) 2006 Dom Lachowicz <cinamod@hotmail.com>
-// Copyright (C) 2007-2010, 2012, 2016-2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2007-2010, 2012, 2016-2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2011 Vittal Aithal <vittal.aithal@cognidox.com>
 // Copyright (C) 2012, 2013, 2016-2018, 2021 Adrian Johnson <ajohnson@redneon.com>
@@ -28,7 +28,7 @@
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2019-2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2019 Thomas Fischer <fischer@unix-ag.uni-kl.de>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -44,6 +44,7 @@
 #include <ctime>
 #include <cmath>
 #include <map>
+#include <numbers>
 #include <set>
 #include "parseargs.h"
 #include "printencodings.h"
@@ -113,21 +114,26 @@ static const ArgDesc argDesc[] = { { "-f", argInt, &firstPage, 0, "first page to
                                    { "-?", argFlag, &printHelp, 0, "print usage information" },
                                    {} };
 
-static void printTextString(const GooString *s, const UnicodeMap *uMap)
+static void printStdTextString(const std::string &s, const UnicodeMap *uMap)
 {
     char buf[8];
-    std::vector<Unicode> u = TextStringToUCS4(s->toStr());
+    const std::vector<Unicode> u = TextStringToUCS4(s);
     for (const auto &c : u) {
         int n = uMap->mapUnicode(c, buf, sizeof(buf));
         fwrite(buf, 1, n, stdout);
     }
 }
 
-static void printUCS4String(const Unicode *u, int len, const UnicodeMap *uMap)
+static void printTextString(const GooString *s, const UnicodeMap *uMap)
+{
+    printStdTextString(s->toStr(), uMap);
+}
+
+static void printUCS4String(const std::vector<Unicode> &u, const UnicodeMap *uMap)
 {
     char buf[8];
-    for (int i = 0; i < len; i++) {
-        int n = uMap->mapUnicode(u[i], buf, sizeof(buf));
+    for (auto i : u) {
+        int n = uMap->mapUnicode(i, buf, sizeof(buf));
         fwrite(buf, 1, n, stdout);
     }
 }
@@ -294,11 +300,6 @@ static void printStruct(const StructElement *element, unsigned indent)
     }
 }
 
-struct GooStringCompare
-{
-    bool operator()(GooString *lhs, GooString *rhs) const { return lhs->cmp(const_cast<GooString *>(rhs)) < 0; }
-};
-
 static void printLinkDest(const std::unique_ptr<LinkDest> &dest)
 {
     GooString s;
@@ -369,29 +370,25 @@ static void printLinkDest(const std::unique_ptr<LinkDest> &dest)
 
 static void printDestinations(PDFDoc *doc, const UnicodeMap *uMap)
 {
-    std::map<Ref, std::map<GooString *, std::unique_ptr<LinkDest>, GooStringCompare>> map;
+    std::map<Ref, std::map<std::string, std::unique_ptr<LinkDest>>> map;
 
     int numDests = doc->getCatalog()->numDestNameTree();
     for (int i = 0; i < numDests; i++) {
-        GooString *name = new GooString(doc->getCatalog()->getDestNameTreeName(i));
+        const GooString *name = doc->getCatalog()->getDestNameTreeName(i);
         std::unique_ptr<LinkDest> dest = doc->getCatalog()->getDestNameTreeDest(i);
-        if (dest && dest->isPageRef()) {
+        if (name && dest && dest->isPageRef()) {
             Ref pageRef = dest->getPageRef();
-            map[pageRef].insert(std::make_pair(name, std::move(dest)));
-        } else {
-            delete name;
+            map[pageRef].insert(std::make_pair(name->toStr(), std::move(dest)));
         }
     }
 
     numDests = doc->getCatalog()->numDests();
     for (int i = 0; i < numDests; i++) {
-        GooString *name = new GooString(doc->getCatalog()->getDestsName(i));
+        const char *name = doc->getCatalog()->getDestsName(i);
         std::unique_ptr<LinkDest> dest = doc->getCatalog()->getDestsDest(i);
-        if (dest && dest->isPageRef()) {
+        if (name && dest && dest->isPageRef()) {
             Ref pageRef = dest->getPageRef();
             map[pageRef].insert(std::make_pair(name, std::move(dest)));
-        } else {
-            delete name;
         }
     }
 
@@ -405,9 +402,8 @@ static void printDestinations(PDFDoc *doc, const UnicodeMap *uMap)
                     printf("%4d ", i);
                     printLinkDest(it.second);
                     printf(" \"");
-                    printTextString(it.first, uMap);
+                    printStdTextString(it.first, uMap);
                     printf("\"\n");
-                    delete it.first;
                 }
             }
         }
@@ -423,7 +419,7 @@ static void printUrlList(PDFDoc *doc)
             std::unique_ptr<Links> links = page->getLinks();
             for (AnnotLink *annot : links->getLinks()) {
                 LinkAction *action = annot->getAction();
-                if (action->getKind() == actionURI) {
+                if (action && action->getKind() == actionURI) {
                     LinkURI *linkUri = dynamic_cast<LinkURI *>(action);
                     std::string uri = linkUri->getURI();
                     printf("%4d  Annotation    %s\n", pg, uri.c_str());
@@ -657,13 +653,13 @@ static void printPdfSubtype(PDFDoc *doc, const UnicodeMap *uMap)
 
         printf("    Title:         %s\n", typeExp->c_str());
         printf("    Abbreviation:  %s\n", abbr->c_str());
-        if (part.get()) {
+        if (part) {
             printf("    Subtitle:      Part %d: %s\n", subpart, part->c_str());
         } else {
             printf("    Subtitle:      Part %d\n", subpart);
         }
         printf("    Standard:      %s-%d\n", typeExp->toStr().substr(0, 9).c_str(), subpart);
-        if (confExp.get()) {
+        if (confExp) {
             printf("    Conformance:   %s\n", confExp->c_str());
         }
     }
@@ -705,15 +701,12 @@ static void printCustomInfo(PDFDoc *doc, const UnicodeMap *uMap)
                 Object obj = dict->lookup(key.c_str());
                 if (obj.isString()) {
                     // print key
-                    Unicode *u;
-                    int len = utf8ToUCS4(key.c_str(), &u);
-                    printUCS4String(u, len, uMap);
+                    std::vector<Unicode> u = utf8ToUCS4(key);
+                    printUCS4String(u, uMap);
                     fputs(":", stdout);
-                    while (len < 16) {
+                    for (size_t i = u.size(); i < 16; i++) {
                         fputs(" ", stdout);
-                        len++;
                     }
-                    gfree(u);
 
                     // print value
                     GooString val_str(obj.getString());
@@ -847,8 +840,8 @@ static void printInfo(PDFDoc *doc, const UnicodeMap *uMap, long long filesize, b
         if ((fabs(w - 612) < 1 && fabs(h - 792) < 1) || (fabs(w - 792) < 1 && fabs(h - 612) < 1)) {
             printf(" (letter)");
         } else {
-            hISO = sqrt(sqrt(2.0)) * 7200 / 2.54;
-            wISO = hISO / sqrt(2.0);
+            hISO = sqrt(std::numbers::sqrt2) * 7200 / 2.54;
+            wISO = hISO / std::numbers::sqrt2;
             isoThreshold = hISO * 0.003; ///< allow for 0.3% error when guessing conformance to ISO 216, A series
             for (i = 0; i <= 6; ++i) {
                 if ((fabs(w - wISO) < isoThreshold && fabs(h - hISO) < isoThreshold) || (fabs(w - hISO) < isoThreshold && fabs(h - wISO) < isoThreshold)) {
@@ -856,8 +849,8 @@ static void printInfo(PDFDoc *doc, const UnicodeMap *uMap, long long filesize, b
                     break;
                 }
                 hISO = wISO;
-                wISO /= sqrt(2.0);
-                isoThreshold /= sqrt(2.0);
+                wISO /= std::numbers::sqrt2;
+                isoThreshold /= std::numbers::sqrt2;
             }
         }
         printf("\n");

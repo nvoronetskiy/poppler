@@ -1,3 +1,207 @@
+Release 25.02.0:
+        core:
+         * cairo: fix issue for images reaching MAX_CAIRO_IMAGE_SIZE
+         * Improve rendering in some malformed documents
+         * Internal code improvements
+
+        glib:
+         * add new api to allow selecting annotations to render
+         * fix a crash when getting a font description for a free text annotation if it was not set
+
+Release 25.01.0:
+        core:
+         * TextOutputDev: Better detect fakebold words
+         * TextOutputDev: Faster sorting algorithm
+         * Internal code improvements
+         * Fix crashes in malformed documents
+
+        cpp:
+         * Remove rect parameter from image::copy, it was never implemented
+
+        qt6:
+         * Fix crash in Submit Forms if document links to non existing field
+
+        qt5:
+         * Fix crash in Submit Forms if document links to non existing field
+
+        glib:
+         * mark transfer of poppler_page_get_selected_region
+
+        utils:
+         * pdfdetach: Make -savefile work with Unicode strings. Issue #1540
+
+        build system:
+         * Don't update pdfsig.pot when POT-Creation-date is the only change
+
+Release 24.12.0:
+        core:
+         * cairo: Fix rendering of JPX images with transparency
+         * cairo: Fix JPX transparency regression
+         * Override encoding for Zapf Dingbats
+         * Improve Signature appearance generation code
+         * Improve Stamp appearance generation code
+         * Mark certificates that can do qualified signing
+         * Internal code improvements
+
+        qt6:
+         * Mark certificates that can do qualified signing
+
+        glib:
+         * Add free text annotations support
+
+        utils:
+         * pdfsig: Improve man page
+
+        build system:
+         * Install some more internal headers
+         * Fix build with in-tree build
+
+Release 24.11.0:
+        core:
+         * Fix rendering of some buttons
+         * Fix selecting fonts in TTC font collections
+         * CairoOutputDev: prevent infinite loop in functionShadedFill()
+         * Fix some unstable headers not being usable on their own
+         * Fix some headers not being usable on their own
+
+        glib:
+         * Fix some headers not being usable on their own
+         * add INSTALL_GLIB_DEMO option to install poppler-glib-demo
+         * Fix Launch action with unicode encoded filenames
+
+        qt6:
+         * Fix memory handling issue on signature creation
+         * Fix Launch action with unicode encoded filenames
+
+        qt5:
+         * Fix Launch action with unicode encoded filenames
+
+        build system:
+         * Remove duplicate definitions
+         * cmake: Set CMAKE_C_STANDARD to 17
+
+Release 24.10.0:
+        core:
+         * Add support for SubmitForms Links
+         * Internal code improvements
+         * Fix crash in malformed documents
+
+        qt6:
+         * Add support for SubmitForms Links
+         * Add API for creating signature field without signing immediately
+
+        glib:
+         * add auto_cleanup functions so that consumers can use g_auto*
+         * fix closure GI annotation
+
+        qt5:
+         * Add support for SubmitForms Links
+
+        build system:
+         * Use the boosts own cmake file as suggested by cmake itself
+
+Release 24.09.0:
+        core:
+         * Catalog: map page by Ref to make findPage() faster
+         * Catalog: Add support for OpenAction
+         * CairoFontEngine: Fix cairo_font_face_t leak
+         * Splash: Fix crash when softMask fails to allocate
+         * Remove incorrect \n and \r characters at the end of error() strings
+
+Release 24.08.0:
+        core:
+         * Add support for modifying the appearance stream text in form field choice
+         * Fix buffer overflow in Windows specific font selection code
+         * Fix crashes in malformed files
+         * Internal code improvements
+
+        qt5:
+         * Add support for modifying the appearance stream text in form field choice
+
+        qt6:
+         * Add support for modifying the appearance stream text in form field choice
+
+        utils:
+         * pdfinfo: Fix crash in malformed documents
+
+Release 24.07.0:
+        core:
+         * Fix crashes in broken files
+         * Internal code improvements
+
+        qt6:
+         * Add getters for document additional actions
+         * Implement reset forms link
+
+        qt5:
+         * Add getters for document additional actions
+         * Implement reset forms link
+
+        utils:
+         * pdfinfo: Fix crash in broken documents when using -dests
+
+        build system:
+         * Mark glib-mkenums as required
+
+Release 24.06.0:
+        core:
+         * Performance improvements in some files
+         * Fix some issues with files bigger than 2^31 bytes
+         * Remove all cairo include guards for cairo < 1.16
+         * Fix MSVC build
+         * Internal code improvements
+
+        qt6:
+         * Update Qt6 doc example
+         * Use the non deprecated version of QString::fromUcs4
+
+        glib:
+         * properly document return value from poppler_font_info_scan
+
+Release 24.05.0:
+        core:
+         * Fix signing not being totally correct in some kind of PDF files
+         * Assume "Adobe-Identity" for character collection. Issue #1465
+         * Small improvements in annotation font rendering
+         * Remove some GooString methods, use std::string ones instead
+         * Move some GooString methods to UTF.h
+         * Fix crash in broken files
+
+        cpp:
+         * cpp: Fix crash extracting text and font in some files. Issue #1477
+         * Change base class of ustring to char16_t
+
+        qt6:
+         * Add async API for certificate validation
+         * Fix text extraction for Landscape/Seascape pages
+
+        qt5:
+         * Add async API for certificate validation
+         * Fix text extraction for Landscape/Seascape pages
+
+        utils:
+         * pdfdetach: Small code improvements
+         * pdftops: Write compliant ps header
+
+        build system:
+         * Increase minimum supported base to that provided by Ubuntu 22.04
+
+Release 24.04.0:
+        core:
+         * Optimize page text extraction speed
+         * Fix clipping path handling in some files. Issue #739
+         * Fix regression in text selection
+         * Fix text search across lines between paragraphs
+
+        qt6:
+         * Fix crash in SoundObject::data
+
+        utils:
+         * pdfsig: Add Catalan translation
+
+        build system:
+         * Build code as C++20
+
 Release 24.03.0:
         core:
          * Fix opening some malformed files. Issue #1447

@@ -8,6 +8,7 @@
 // Copyright 2010, 2017, 2021, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright 2021 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright 2021 Christian Persch <chpe@src.gnome.org>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -34,7 +35,7 @@ int FileDescriptorPDFDocBuilder::parseFdFromUri(const GooString &uri)
     return fd;
 }
 
-std::unique_ptr<PDFDoc> FileDescriptorPDFDocBuilder::buildPDFDoc(const GooString &uri, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword, void *guiDataA)
+std::unique_ptr<PDFDoc> FileDescriptorPDFDocBuilder::buildPDFDoc(const GooString &uri, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword)
 {
     const auto fd = parseFdFromUri(uri);
     if (fd == -1) {

@@ -6,6 +6,8 @@
 // Copyright (C) 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2021 Even Rouault <even.rouault@spatialys.com>
 // Copyright (C) 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2025 Nelson Benítez León <nbenitezl@gmail.com>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // This file is under the GPLv2 or later license
 //
@@ -31,7 +33,7 @@ FlateEncoder::FlateEncoder(Stream *strA) : FilterStream(strA)
     // -Wzero-as-null-pointer-constant warning.
     // For safety, check that the Z_NULL definition is equivalent to
     // 0 / null pointer.
-    static_assert(Z_NULL == 0);
+    static_assert(static_cast<int>(Z_NULL) == 0);
     zlib_stream.zalloc = nullptr;
     zlib_stream.zfree = nullptr;
     zlib_stream.opaque = nullptr;
@@ -55,11 +57,11 @@ FlateEncoder::~FlateEncoder()
     }
 }
 
-void FlateEncoder::reset()
+bool FlateEncoder::reset()
 {
     int zlib_status;
 
-    str->reset();
+    bool innerReset = str->reset();
 
     outBufPtr = outBufEnd = outBuf;
     inBufEof = outBufEof = false;
@@ -71,10 +73,13 @@ void FlateEncoder::reset()
     if (zlib_status != Z_OK) {
         inBufEof = outBufEof = true;
         error(errInternal, -1, "Internal: deflateInit() failed in FlateEncoder::reset()");
+        return false;
     }
 
     zlib_stream.next_out = outBufEnd;
     zlib_stream.avail_out = 1; /* anything but 0 to trigger a read */
+
+    return innerReset;
 }
 
 bool FlateEncoder::fillBuf()

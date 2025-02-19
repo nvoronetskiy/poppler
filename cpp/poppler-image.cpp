@@ -1,10 +1,11 @@
 /*
  * Copyright (C) 2010-2011, Pino Toscano <pino@kde.org>
  * Copyright (C) 2013 Adrian Johnson <ajohnson@redneon.com>
- * Copyright (C) 2017-2019, 2021, Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2017-2019, 2021, 2024, Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2017, Jeroen Ooms <jeroenooms@gmail.com>
  * Copyright (C) 2018, Zsombor Hollay-Horvath <hollay.horvath@gmail.com>
  * Copyright (C) 2018, Adam Reichold <adam.reichold@t-online.de>
+ * Copyright (C) 2024, g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,17 +30,17 @@
 #include "poppler-image-private.h"
 
 #include <config.h>
-#include "ImgWriter.h"
+#include "goo/ImgWriter.h"
 #if defined(ENABLE_LIBPNG)
-#    include "PNGWriter.h"
+#    include "goo/PNGWriter.h"
 #endif
 #if defined(ENABLE_LIBJPEG)
-#    include "JpegWriter.h"
+#    include "goo/JpegWriter.h"
 #endif
 #if defined(ENABLE_LIBTIFF)
-#    include "TiffWriter.h"
+#    include "goo/TiffWriter.h"
 #endif
-#include "NetPBMWriter.h"
+#include "goo/NetPBMWriter.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -300,23 +301,15 @@ const char *image::const_data() const
 }
 
 /**
- Copy of a slice of the image.
+ Copies the image (i.e. \em detaches)
 
- \param r the sub-area of this image to copy; if empty, the whole image is
-          copied
-
- \returns a new image representing the specified part of the current image
+ \returns a new image copied from the current image
  */
-image image::copy(const rect &r) const
+image image::copy() const
 {
-    if (r.is_empty()) {
-        image img(*this);
-        img.detach();
-        return img;
-    }
-
-    // ### FIXME
-    return *this;
+    image img(*this);
+    img.detach();
+    return img;
 }
 
 /**
@@ -344,7 +337,7 @@ bool image::save(const std::string &file_name, const std::string &out_format, in
     }
 
     std::string fmt = out_format;
-    std::transform(fmt.begin(), fmt.end(), fmt.begin(), tolower);
+    std::ranges::transform(fmt, fmt.begin(), tolower);
 
     std::unique_ptr<ImgWriter> w;
     const int actual_dpi = dpi == -1 ? 75 : dpi;
@@ -368,7 +361,7 @@ bool image::save(const std::string &file_name, const std::string &out_format, in
     else if (fmt == "pnm") {
         w = std::make_unique<NetPBMWriter>(pnm_format(d->format));
     }
-    if (!w.get()) {
+    if (!w) {
         return false;
     }
     FILE *f = fopen(file_name.c_str(), "wb");

@@ -15,6 +15,7 @@
 // Copyright (C) 2008, 2022 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -27,8 +28,6 @@
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
-#include "goo/gmem.h"
-#include "goo/GooString.h"
 #include "SplashFontFile.h"
 #include "SplashFontFileID.h"
 
@@ -36,9 +35,9 @@
 // SplashFontFile
 //------------------------------------------------------------------------
 
-SplashFontFile::SplashFontFile(SplashFontFileID *idA, SplashFontSrc *srcA)
+SplashFontFile::SplashFontFile(std::unique_ptr<SplashFontFileID> idA, SplashFontSrc *srcA)
 {
-    id = idA;
+    id = std::move(idA);
     src = srcA;
     src->ref();
     refCnt = 0;
@@ -48,7 +47,6 @@ SplashFontFile::SplashFontFile(SplashFontFileID *idA, SplashFontSrc *srcA)
 SplashFontFile::~SplashFontFile()
 {
     src->unref();
-    delete id;
 }
 
 void SplashFontFile::incRefCnt()

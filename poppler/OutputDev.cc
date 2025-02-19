@@ -20,6 +20,7 @@
 // Copyright (C) 2009, 2012, 2013, 2018, 2019 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2012 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -108,7 +109,9 @@ void OutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str, int wid
     int i, j;
 
     if (inlineImg) {
-        str->reset();
+        if (!str->reset()) {
+            return;
+        }
         j = height * ((width + 7) / 8);
         for (i = 0; i < j; ++i) {
             str->getChar();
@@ -122,17 +125,16 @@ void OutputDev::setSoftMaskFromImageMask(GfxState *state, Object *ref, Stream *s
     drawImageMask(state, ref, str, width, height, invert, false, inlineImg);
 }
 
-void OutputDev::unsetSoftMaskFromImageMask(GfxState *state, double *baseMatrix)
-{
-    return;
-}
+void OutputDev::unsetSoftMaskFromImageMask(GfxState *state, double *baseMatrix) { }
 
 void OutputDev::drawImage(GfxState *state, Object *ref, Stream *str, int width, int height, GfxImageColorMap *colorMap, bool interpolate, const int *maskColors, bool inlineImg)
 {
     int i, j;
 
     if (inlineImg) {
-        str->reset();
+        if (!str->reset()) {
+            return;
+        }
         j = height * ((width * colorMap->getNumPixelComps() * colorMap->getBits() + 7) / 8);
         for (i = 0; i < j; ++i) {
             str->getChar();

@@ -19,6 +19,7 @@
 // Copyright (C) 2011, 2013 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2011 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2022 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -45,7 +46,7 @@ PreScanOutputDev::PreScanOutputDev(PSLevel levelA) : level(levelA)
     clearStats();
 }
 
-PreScanOutputDev::~PreScanOutputDev() { }
+PreScanOutputDev::~PreScanOutputDev() = default;
 
 void PreScanOutputDev::startPage(int /*pageNum*/, GfxState * /*state*/, XRef * /*xref*/) { }
 
@@ -57,7 +58,7 @@ void PreScanOutputDev::stroke(GfxState *state)
 
     check(state->getStrokeColorSpace(), state->getStrokeColor(), state->getStrokeOpacity(), state->getBlendMode());
     const std::vector<double> &dash = state->getLineDash(&dashStart);
-    if (dash.size() != 0) {
+    if (!dash.empty()) {
         gdi = false;
     }
 }
@@ -183,7 +184,9 @@ void PreScanOutputDev::drawImageMask(GfxState *state, Object * /*ref*/, Stream *
     }
 
     if (inlineImg) {
-        str->reset();
+        if (!str->reset()) {
+            return;
+        }
         j = height * ((width + 7) / 8);
         for (i = 0; i < j; ++i) {
             str->getChar();
@@ -218,7 +221,9 @@ void PreScanOutputDev::drawImage(GfxState *state, Object * /*ref*/, Stream *str,
     }
 
     if (inlineImg) {
-        str->reset();
+        if (!str->reset()) {
+            return;
+        }
         j = height * ((width * colorMap->getNumPixelComps() * colorMap->getBits() + 7) / 8);
         for (i = 0; i < j; ++i) {
             str->getChar();

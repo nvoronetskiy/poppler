@@ -3,6 +3,8 @@
    Copyright 2018, 2020, 2022 Albert Astals Cid <aacid@kde.org> 2018
    Copyright 2019 Oliver Sander <oliver.sander@tu-dresden.de>
    Copyright 2020 Adam Reichold <adam.reichold@t-online.de>
+   Copyright 2024 Vincent Lefevre <vincent@vinc17.net>
+   Copyright 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
    License: GPLv2 */
 /*
   A tool to stress-test poppler rendering and measure rendering times for
@@ -69,7 +71,7 @@
 
 #define dimof(X) (sizeof(X) / sizeof((X)[0]))
 
-#define INVALID_PAGE_NO -1
+#define INVALID_PAGE_NO (-1)
 
 /* Those must be implemented in order to provide preview during execution.
    They can be no-ops. An implementation for windows is in
@@ -176,7 +178,7 @@ static bool gfSlowPreview = false;
 /* If true, we only dump the text, not render */
 static bool gfTextOnly = false;
 
-#define PAGE_NO_NOT_GIVEN -1
+#define PAGE_NO_NOT_GIVEN (-1)
 
 /* If equals PAGE_NO_NOT_GIVEN, we're in default mode where we render all pages.
    If different, will only render this page */
@@ -338,7 +340,6 @@ static void sleep_milliseconds(int milliseconds)
             return;
         }
     }
-    return;
 #endif
 }
 
@@ -350,11 +351,11 @@ static SplashColor splashColBlue;
 static SplashColor splashColWhite;
 static SplashColor splashColBlack;
 
-#define SPLASH_COL_RED_PTR (SplashColorPtr) & (splashColRed[0])
-#define SPLASH_COL_GREEN_PTR (SplashColorPtr) & (splashColGreen[0])
-#define SPLASH_COL_BLUE_PTR (SplashColorPtr) & (splashColBlue[0])
-#define SPLASH_COL_WHITE_PTR (SplashColorPtr) & (splashColWhite[0])
-#define SPLASH_COL_BLACK_PTR (SplashColorPtr) & (splashColBlack[0])
+#define SPLASH_COL_RED_PTR ((SplashColorPtr) & (splashColRed[0]))
+#define SPLASH_COL_GREEN_PTR ((SplashColorPtr) & (splashColGreen[0]))
+#define SPLASH_COL_BLUE_PTR ((SplashColorPtr) & (splashColBlue[0]))
+#define SPLASH_COL_WHITE_PTR ((SplashColorPtr) & (splashColWhite[0]))
+#define SPLASH_COL_BLACK_PTR ((SplashColorPtr) & (splashColBlack[0]))
 
 static SplashColorPtr gBgColor = SPLASH_COL_WHITE_PTR;
 
@@ -608,7 +609,6 @@ static bool ShowPreview()
 static void RenderPdfAsText(const char *fileName)
 {
     PDFDoc *pdfDoc = nullptr;
-    GooString *txt = nullptr;
     int pageCount;
     double timeInMs;
 
@@ -628,7 +628,7 @@ static void RenderPdfAsText(const char *fileName)
     GooTimer msTimer;
     pdfDoc = new PDFDoc(std::make_unique<GooString>(fileName));
     if (!pdfDoc->isOk()) {
-        error(errIO, -1, "RenderPdfFile(): failed to open PDF file {0:s}\n", fileName);
+        error(errIO, -1, "RenderPdfFile(): failed to open PDF file {0:s}", fileName);
         goto Exit;
     }
 
@@ -650,15 +650,13 @@ static void RenderPdfAsText(const char *fileName)
         bool crop = true;
         bool doLinks = false;
         pdfDoc->displayPage(textOut, curPage, 72, 72, rotate, useMediaBox, crop, doLinks);
-        txt = textOut->getText(0.0, 0.0, 10000.0, 10000.0);
+        GooString txt = textOut->getText(0.0, 0.0, 10000.0, 10000.0);
         msTimer.stop();
         timeInMs = msTimer.getElapsed();
         if (gfTimings) {
             LogInfo("page %d: %.2f ms\n", curPage, timeInMs);
         }
-        printf("%s\n", txt->c_str());
-        delete txt;
-        txt = nullptr;
+        printf("%s\n", txt.c_str());
     }
 
 Exit:

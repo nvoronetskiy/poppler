@@ -67,7 +67,7 @@ void removeStyleSuffix(std::string &familyName)
 
 }
 
-#define xoutRound(x) ((int)(x + 0.5))
+#define xoutRound(x) ((int)((x) + 0.5))
 extern bool xml;
 extern bool fontFullName;
 
@@ -157,7 +157,7 @@ HtmlFont::HtmlFont(const GfxFont &font, int _size, GfxRGB rgb, double opacity)
             italic = true;
         }
 
-        familyName = fontname->c_str();
+        familyName = *fontname;
         removeStyleSuffix(familyName);
     } else {
         FontName = new GooString(defaultFamilyName);
@@ -279,9 +279,9 @@ std::unique_ptr<GooString> HtmlFont::HtmlFilter(const Unicode *u, int uLen)
     return tmp;
 }
 
-HtmlFontAccu::HtmlFontAccu() { }
+HtmlFontAccu::HtmlFontAccu() = default;
 
-HtmlFontAccu::~HtmlFontAccu() { }
+HtmlFontAccu::~HtmlFontAccu() = default;
 
 int HtmlFontAccu::AddFont(const HtmlFont &font)
 {

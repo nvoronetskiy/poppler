@@ -5,8 +5,9 @@
 // This file is licensed under the GPLv2 or later
 //
 // Copyright 2010 Hib Eris <hib@hiberis.nl>
-// Copyright 2010, 2017, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright 2010, 2017, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright 2021 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 //========================================================================
 
@@ -22,18 +23,18 @@
 // CurlPDFDocBuilder
 //------------------------------------------------------------------------
 
-std::unique_ptr<PDFDoc> CurlPDFDocBuilder::buildPDFDoc(const GooString &uri, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword, void *guiDataA)
+std::unique_ptr<PDFDoc> CurlPDFDocBuilder::buildPDFDoc(const GooString &uri, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword)
 {
     CachedFile *cachedFile = new CachedFile(new CurlCachedFileLoader(uri.toStr()));
 
     if (cachedFile->getLength() == ((unsigned int)-1)) {
         cachedFile->decRefCnt();
-        return PDFDoc::ErrorPDFDoc(errOpenFile, std::unique_ptr<GooString>(uri.copy()));
+        return PDFDoc::ErrorPDFDoc(errOpenFile, uri.copy());
     }
 
     BaseStream *str = new CachedFileStream(cachedFile, 0, false, cachedFile->getLength(), Object(objNull));
 
-    return std::make_unique<PDFDoc>(str, ownerPassword, userPassword, guiDataA);
+    return std::make_unique<PDFDoc>(str, ownerPassword, userPassword);
 }
 
 bool CurlPDFDocBuilder::supports(const GooString &uri)

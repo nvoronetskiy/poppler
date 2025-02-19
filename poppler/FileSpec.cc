@@ -7,12 +7,12 @@
 //
 // Copyright (C) 2008-2009 Carlos Garcia Campos <carlosgc@gnome.org>
 // Copyright (C) 2009 Kovid Goyal <kovid@kovidgoyal.net>
-// Copyright (C) 2012, 2017-2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2012, 2017-2021, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2012 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Christian Persch <chpe@src.gnome.org>
-// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -50,7 +50,7 @@ EmbFile::EmbFile(Object &&efStream)
         // subtype is normally the mimetype
         Object subtypeName = dataDict->lookup("Subtype");
         if (subtypeName.isName()) {
-            m_mimetype = new GooString(subtypeName.getName());
+            m_mimetype = std::make_unique<GooString>(subtypeName.getName());
         }
 
         // paramDict corresponds to Table 3.42 in the PDF1.6 spec
@@ -58,12 +58,12 @@ EmbFile::EmbFile(Object &&efStream)
         if (paramDict.isDict()) {
             Object paramObj = paramDict.dictLookup("ModDate");
             if (paramObj.isString()) {
-                m_modDate = new GooString(paramObj.getString());
+                m_modDate = paramObj.getString()->copy();
             }
 
             paramObj = paramDict.dictLookup("CreationDate");
             if (paramObj.isString()) {
-                m_createDate = new GooString(paramObj.getString());
+                m_createDate = paramObj.getString()->copy();
             }
 
             paramObj = paramDict.dictLookup("Size");
@@ -73,19 +73,13 @@ EmbFile::EmbFile(Object &&efStream)
 
             paramObj = paramDict.dictLookup("CheckSum");
             if (paramObj.isString()) {
-                m_checksum = new GooString(paramObj.getString());
+                m_checksum = paramObj.getString()->copy();
             }
         }
     }
 }
 
-EmbFile::~EmbFile()
-{
-    delete m_createDate;
-    delete m_modDate;
-    delete m_checksum;
-    delete m_mimetype;
-}
+EmbFile::~EmbFile() = default;
 
 bool EmbFile::save(const std::string &path)
 {
@@ -108,7 +102,9 @@ bool EmbFile::save2(FILE *f)
         return false;
     }
 
-    m_objStr.streamReset();
+    if (!m_objStr.streamReset()) {
+        return false;
+    }
     while ((c = m_objStr.streamGetChar()) != EOF) {
         fputc(c, f);
     }
@@ -118,10 +114,7 @@ bool EmbFile::save2(FILE *f)
 FileSpec::FileSpec(const Object *fileSpecA)
 {
     ok = true;
-    fileName = nullptr;
-    platformFileName = nullptr;
     embFile = nullptr;
-    desc = nullptr;
     fileSpec = fileSpecA->copy();
 
     Object obj1 = getFileSpecName(fileSpecA);
@@ -152,13 +145,7 @@ FileSpec::FileSpec(const Object *fileSpecA)
     }
 }
 
-FileSpec::~FileSpec()
-{
-    delete fileName;
-    delete platformFileName;
-    delete embFile;
-    delete desc;
-}
+FileSpec::~FileSpec() = default;
 
 EmbFile *FileSpec::getEmbeddedFile()
 {
@@ -167,13 +154,13 @@ EmbFile *FileSpec::getEmbeddedFile()
     }
 
     if (embFile) {
-        return embFile;
+        return embFile.get();
     }
 
     XRef *xref = fileSpec.getDict()->getXRef();
-    embFile = new EmbFile(fileStream.fetch(xref));
+    embFile = std::make_unique<EmbFile>(fileStream.fetch(xref));
 
-    return embFile;
+    return embFile.get();
 }
 
 Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string &fileName)
@@ -196,7 +183,7 @@ Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string 
 
     Dict *fsDict = new Dict(xref);
     fsDict->set("Type", Object(objName, "Filespec"));
-    fsDict->set("UF", Object(new GooString(fileName)));
+    fsDict->set("UF", Object(std::make_unique<GooString>(fileName)));
     fsDict->set("EF", Object(efDict));
 
     return Object(fsDict);
@@ -205,7 +192,7 @@ Object FileSpec::newFileSpecObject(XRef *xref, GooFile *file, const std::string 
 GooString *FileSpec::getFileNameForPlatform()
 {
     if (platformFileName) {
-        return platformFileName;
+        return platformFileName.get();
     }
 
     Object obj1 = getFileSpecNameForPlatform(&fileSpec);
@@ -213,7 +200,7 @@ GooString *FileSpec::getFileNameForPlatform()
         platformFileName = obj1.getString()->copy();
     }
 
-    return platformFileName;
+    return platformFileName.get();
 }
 
 Object getFileSpecName(const Object *fileSpec)
@@ -279,7 +266,7 @@ Object getFileSpecNameForPlatform(const Object *fileSpec)
     // system-dependent path manipulation
 #ifdef _WIN32
     int i, j;
-    GooString *name = fileName.getString()->copy();
+    std::unique_ptr<GooString> name = fileName.getString()->copy();
     // "//...."             --> "\...."
     // "/x/...."            --> "x:\...."
     // "/server/share/...." --> "\\server\share\...."
@@ -313,7 +300,7 @@ Object getFileSpecNameForPlatform(const Object *fileSpec)
             name->del(i);
         }
     }
-    fileName = Object(name);
+    fileName = Object(std::move(name));
 #endif /* _WIN32 */
 
     return fileName;

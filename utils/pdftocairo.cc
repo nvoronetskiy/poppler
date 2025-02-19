@@ -19,7 +19,7 @@
 // Copyright (C) 2009 Shen Liang <shenzhuxi@gmail.com>
 // Copyright (C) 2009 Stefan Thomas <thomas@eload24.com>
 // Copyright (C) 2009, 2010, 2017-2020, 2022 Albert Astals Cid <aacid@kde.org>
-// Copyright (C) 2010, 2011-2017, 2023 Adrian Johnson <ajohnson@redneon.com>
+// Copyright (C) 2010, 2011-2017, 2023, 2024 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2010, 2014 Hib Eris <hib@hiberis.nl>
 // Copyright (C) 2010 Jonathan Liu <net147@gmail.com>
 // Copyright (C) 2010 William Bader <williambader@hotmail.com>
@@ -632,7 +632,7 @@ static void beginDocument(GooString *inputFileName, GooString *outputFileName, d
     }
 }
 
-static void beginPage(double *w, double *h)
+static void beginPage(double *w, double *h) // NOLINT(readability-non-const-parameter) On the windows codepath can't be const
 {
     if (printing) {
         if (ps) {
@@ -1277,23 +1277,22 @@ int main(int argc, char *argv[])
 
     // clean up
     delete cairoOut;
-    if (fileName) {
-        delete fileName;
-    }
-    if (outputName) {
-        delete outputName;
-    }
-    if (outputFileName) {
-        delete outputFileName;
-    }
-    if (imageFileName) {
-        delete imageFileName;
-    }
+    delete fileName;
+    delete outputName;
+    delete outputFileName;
+    delete imageFileName;
 
 #ifdef USE_CMS
     if (icc_data) {
         gfree(icc_data);
     }
+#endif
+
+#ifndef NDEBUG
+    // Clear the cairo font cache. If all references to font faces or
+    // scaled fonts have not been released this function will
+    // assert. If this occurs we have found a memory leak.
+    cairo_debug_reset_static_data();
 #endif
 
     return 0;

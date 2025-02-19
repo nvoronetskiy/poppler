@@ -19,6 +19,9 @@
 // Copyright (C) 2012 Marek Kasik <mkasik@redhat.com>
 // Copyright (C) 2013, 2017 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2020 Adam Reichold <adam.reichold@t-online.de>
+// Copyright (C) 2024 Oliver Sander <oliver.sander@tu-dresden.de>
+// Copyright (C) 2024 Vincent Lefevre <vincent@vinc17.net>
+// Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -31,7 +34,7 @@
 #include <cstdio>
 #include <cstddef>
 #include <cstdarg>
-#include "GooString.h"
+#include "goo/GooString.h"
 #include "GlobalParams.h"
 #include "Error.h"
 
@@ -53,12 +56,11 @@ void CDECL error(ErrorCategory category, Goffset pos, const char *msg, ...)
         return;
     }
     va_start(args, msg);
-    const std::unique_ptr<GooString> s = GooString::formatv(msg, args);
+    const std::string s = GooString::formatv(msg, args);
     va_end(args);
 
     GooString sanitized;
-    for (int i = 0; i < s->getLength(); ++i) {
-        const char c = s->getChar(i);
+    for (const char c : s) {
         if (c < (char)0x20 || c >= (char)0x7f) {
             sanitized.appendf("<{0:02x}>", c & 0xff);
         } else {

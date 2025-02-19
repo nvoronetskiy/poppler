@@ -5,7 +5,7 @@
 //---------------------------------------------------------------------------------
 // Hugo Mercier <hmercier31[at]gmail.com> (c) 2008
 // Carlos Garcia Campos <carlosgc@gnome.org> (c) 2010
-// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2021
+// Albert Astals Cid <aacid@kde.org> (C) 2017, 2018, 2021, 2024
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ struct MediaWindowParameters
 {
 
     MediaWindowParameters();
-    ~MediaWindowParameters();
+    ~MediaWindowParameters() = default;
 
     // parse from a floating window parameters dictionary
     void parseFWParams(Object *obj);
@@ -72,7 +72,7 @@ struct MediaParameters
 {
 
     MediaParameters();
-    ~MediaParameters();
+    ~MediaParameters() = default;
 
     // parse from a "Media Play Parameters" dictionary
     void parseMediaPlayParameters(Object *playObj);
@@ -131,8 +131,8 @@ public:
     const MediaParameters *getMHParameters() const { return &MH; }
     const MediaParameters *getBEParameters() const { return &BE; }
 
-    const GooString *getContentType() const { return contentType; }
-    const GooString *getFileName() const { return fileName; }
+    const GooString *getContentType() const { return contentType.get(); }
+    const GooString *getFileName() const { return fileName.get(); }
 
     bool getIsEmbedded() const { return isEmbedded; }
     Stream *getEmbbededStream() const { return isEmbedded ? embeddedStreamObject.getStream() : nullptr; }
@@ -140,7 +140,7 @@ public:
     // write embedded stream to file
     void outputToFile(FILE *);
 
-    MediaRendition *copy() const;
+    std::unique_ptr<MediaRendition> copy() const;
 
 private:
     bool ok;
@@ -152,13 +152,13 @@ private:
 
     bool isEmbedded;
 
-    GooString *contentType;
+    std::unique_ptr<GooString> contentType;
 
     // if it's embedded
     Object embeddedStreamObject;
 
     // if it's not embedded
-    GooString *fileName;
+    std::unique_ptr<GooString> fileName;
 };
 
 #endif /* _RENDITION_H_ */

@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2007-2010, 2012, 2015, 2017-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2007-2010, 2012, 2015, 2017-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Jonathan Blandford <jrb@redhat.com>
 // Copyright (C) 2006 Takashi Iwai <tiwai@suse.de>
 // Copyright (C) 2006 Kristian Høgsberg <krh@redhat.com>
@@ -29,6 +29,7 @@
 // Copyright (C) 2018, 2020 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2019 Oliver Sander <oliver.sander@tu-dresden.de>
 // Copyright (C) 2023 Shivodit Gill <shivodit.gill@gmail.com>
+// Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -49,7 +50,9 @@
 #include <string>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
+#include <filesystem>
 
 class GooString;
 class NameToCharCode;
@@ -110,7 +113,7 @@ class POPPLER_PRIVATE_EXPORT GlobalParams
 {
 public:
     // Initialize the global parameters
-    explicit GlobalParams(const char *customPopplerDataDir = nullptr);
+    explicit GlobalParams(const std::string &customPopplerDataDir = {});
 
     ~GlobalParams();
 
@@ -133,11 +136,11 @@ public:
 
     UnicodeMap *getResidentUnicodeMap(const std::string &encodingName);
     FILE *getUnicodeMapFile(const std::string &encodingName);
-    FILE *findCMapFile(const GooString *collection, const GooString *cMapName);
+    FILE *findCMapFile(const GooString &collection, const GooString &cMapName);
     FILE *findToUnicodeFile(const GooString *name);
-    GooString *findFontFile(const std::string &fontName);
-    GooString *findBase14FontFile(const GooString *base14Name, const GfxFont *font, GooString *substituteFontName = nullptr);
-    GooString *findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString *substituteFontName = nullptr, const GooString *base14Name = nullptr);
+    std::optional<std::string> findFontFile(const std::string &fontName);
+    std::optional<std::string> findBase14FontFile(const GooString *base14Name, const GfxFont *font, GooString *substituteFontName = nullptr);
+    std::optional<std::string> findSystemFontFile(const GfxFont *font, SysFontType *type, int *fontNum, GooString *substituteFontName = nullptr, const GooString *base14Name = nullptr);
     FamilyStyleFontSearchResult findSystemFontFileForFamilyAndStyle(const std::string &fontFamily, const std::string &fontStyle, const std::vector<std::string> &filesToIgnore = {});
     UCharFontSearchResult findSystemFontFileForUChar(Unicode uChar, const GfxFont &fontToEmulate);
     std::string getTextEncodingName() const;
@@ -145,9 +148,9 @@ public:
     bool getProfileCommands();
     bool getErrQuiet();
 
-    CharCodeToUnicode *getCIDToUnicode(const GooString *collection);
+    std::shared_ptr<CharCodeToUnicode> getCIDToUnicode(const GooString *collection);
     const UnicodeMap *getUnicodeMap(const std::string &encodingName);
-    std::shared_ptr<CMap> getCMap(const GooString *collection, const GooString *cMapName);
+    std::shared_ptr<CMap> getCMap(const GooString &collection, const GooString &cMapName);
     const UnicodeMap *getTextEncoding();
 
     const UnicodeMap *getUtf8Map();
@@ -166,12 +169,12 @@ public:
     static bool parseYesNo2(const char *token, bool *flag);
 
 private:
-    void parseNameToUnicode(const GooString *name);
+    void parseNameToUnicode(const std::filesystem::path &name);
 
     void scanEncodingDirs();
-    void addCIDToUnicode(const GooString *collection, const GooString *fileName);
-    void addUnicodeMap(const GooString *encodingName, const GooString *fileName);
-    void addCMapDir(const GooString *collection, const GooString *dir);
+    void addCIDToUnicode(std::string &&collection, std::string &&fileName);
+    void addUnicodeMap(std::string &&encodingName, std::string &&fileName);
+    void addCMapDir(std::string &&collection, std::string &&dir);
 
     //----- static tables
 
@@ -195,7 +198,7 @@ private:
     std::unordered_map<std::string, std::string> unicodeMaps;
     // list of CMap dirs, indexed by collection
     std::unordered_multimap<std::string, std::string> cMapDirs;
-    std::vector<GooString *> toUnicodeDirs; // list of ToUnicode CMap dirs
+    std::vector<std::string> toUnicodeDirs; // list of ToUnicode CMap dirs
     bool baseFontsInitialized;
 #ifdef _WIN32
     // windows font substitutes (for CID fonts)
@@ -210,8 +213,8 @@ private:
     bool profileCommands; // profile the drawing commands
     bool errQuiet; // suppress error messages?
 
-    CharCodeToUnicodeCache *cidToUnicodeCache;
-    CharCodeToUnicodeCache *unicodeToUnicodeCache;
+    std::unique_ptr<CharCodeToUnicodeCache> cidToUnicodeCache;
+    std::unique_ptr<CharCodeToUnicodeCache> unicodeToUnicodeCache;
     UnicodeMapCache *unicodeMapCache;
     CMapCache *cMapCache;
 
@@ -221,7 +224,7 @@ private:
     mutable std::recursive_mutex unicodeMapCacheMutex;
     mutable std::recursive_mutex cMapCacheMutex;
 
-    const char *popplerDataDir;
+    std::string popplerDataDir;
 };
 
 class POPPLER_PRIVATE_EXPORT GlobalParamsIniter

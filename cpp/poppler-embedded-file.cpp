@@ -2,6 +2,7 @@
  * Copyright (C) 2009-2011, Pino Toscano <pino@kde.org>
  * Copyright (C) 2016 Jakub Alba <jakubalba@gmail.com>
  * Copyright (C) 2018, 2020, 2022 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -183,7 +184,9 @@ byte_array embedded_file::data() const
         return byte_array();
     }
 
-    stream->reset();
+    if (!stream->reset()) {
+        return byte_array {};
+    }
     byte_array ret(1024);
     size_t data_len = 0;
     int i;

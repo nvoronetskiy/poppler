@@ -15,7 +15,8 @@ Channels of contact
 Poppler has three main channels of contact:
  * The poppler mailing list http://lists.freedesktop.org/mailman/listinfo/poppler
  * The poppler gitlab instance https://gitlab.freedesktop.org/poppler/poppler/
- * The #poppler channel at the IRC freenode network
+ * The #poppler channel at the IRC libera.chat network, which is also bridged
+   to [Matrix](https://matrix.to/#/#poppler:kde.org)
 Do not hesitate to drop by talk to people there.
 
 clang-format
@@ -29,7 +30,7 @@ To get the clang-format warnings locally instead at CI time we recommend you
 to copy the hooks/pre-commit to your .git
     cp hooks/pre-commit .git/hooks/
 
-We are using clang-format 15 on CI. Unfortunately clang-format is not totally
+We are using clang-format 19 on CI. Unfortunately clang-format is not totally
 compatible with older versions of itself. If CI gives you trouble but your local
 clang-format disagrees, just apply the changes suggested by CI and then commit
 with the --no-verify flag. If you get stuck, don't hesitate to ask the reviewer

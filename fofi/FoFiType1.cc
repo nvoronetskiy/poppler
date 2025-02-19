@@ -13,7 +13,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2005, 2008, 2010, 2018, 2021-2023 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2005, 2008, 2010, 2018, 2021-2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2005 Kristian Høgsberg <krh@redhat.com>
 // Copyright (C) 2010 Jakub Wilk <jwilk@jwilk.net>
 // Copyright (C) 2014 Carlos Garcia Campos <carlosgc@gnome.org>
@@ -63,7 +63,7 @@ FoFiType1::~FoFiType1()
         for (int i = 0; i < 256; ++i) {
             gfree(encoding[i]);
         }
-        gfree(encoding);
+        gfree(static_cast<void *>(encoding));
     }
 }
 
@@ -90,7 +90,7 @@ void FoFiType1::writeEncoded(const char **newEncoding, FoFiOutputFunc outputFunc
     int i;
 
     // copy everything up to the encoding
-    for (line = (char *)file; line && strncmp(line, "/Encoding", 9); line = getNextLine(line)) {
+    for (line = (char *)file; line && (strncmp(line, "/Encoding", 9) != 0); line = getNextLine(line)) {
         ;
     }
     if (!line) {
@@ -131,7 +131,7 @@ void FoFiType1::writeEncoded(const char **newEncoding, FoFiOutputFunc outputFunc
     // some fonts have two /Encoding entries in their dictionary, so we
     // check for a second one here
     if (line) {
-        for (line2 = line, i = 0; i < 20 && line2 && strncmp(line2, "/Encoding", 9); line2 = getNextLine(line2), ++i) {
+        for (line2 = line, i = 0; i < 20 && line2 && (strncmp(line2, "/Encoding", 9) != 0); line2 = getNextLine(line2), ++i) {
             ;
         }
         if (i < 20 && line2) {
@@ -197,9 +197,15 @@ public:
             pos = stringView.find_first_of(tokenSeparators, currentPos);
         }
         if (pos == std::string_view::npos) {
-            std::string_view token = stringView.substr(currentPos, length - currentPos);
-            currentPos = length;
-            return token;
+            const auto tokenLength = length - currentPos;
+            if (tokenLength > 0) {
+                std::string_view token = stringView.substr(currentPos, tokenLength);
+                currentPos = length;
+                return token;
+            } else {
+                currentPos = length;
+                return {};
+            }
         }
 
         std::string_view token = stringView.substr(currentPos, pos - currentPos);

@@ -4,7 +4,7 @@
 //
 // This file is licensed under the GPLv2 or later
 //
-// Copyright 2023 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+// Copyright 2023, 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
 //========================================================================
 
 #ifndef SIGNATUREBACKEND_H
@@ -13,19 +13,43 @@
 #include <vector>
 #include <memory>
 #include <chrono>
+#include <variant>
+#include <functional>
 #include <optional>
 #include "HashAlgorithm.h"
 #include "CertificateInfo.h"
 #include "SignatureInfo.h"
-#include "goo/GooString.h"
 #include "poppler_private_export.h"
 
 namespace CryptoSign {
+
+enum class SignatureType
+{
+    adbe_pkcs7_sha1,
+    adbe_pkcs7_detached,
+    ETSI_CAdES_detached,
+    unknown_signature_type,
+    unsigned_signature_field
+};
+
+SignatureType signatureTypeFromString(std::string_view data);
+
+std::string toStdString(SignatureType type);
 
 // experiments seems to say that this is a bit above
 // what we have seen in the wild, and much larger than
 // what we have managed to get nss and gpgme to create.
 static const int maxSupportedSignatureSize = 10000;
+
+enum class SigningError
+{
+    GenericError /** Unclassified error*/,
+    InternalError /** Some sort of internal error. This is likely coming from an actual bug in the code*/,
+    WriteFailed /**Some sort of IO error, missing write permissions or ...*/,
+    UserCancelled /**User cancelled the action*/,
+    KeyMissing, /**The key/certificate not specified*/
+
+};
 
 // Classes to help manage signature backends
 
@@ -38,7 +62,10 @@ public:
     virtual std::string getSignerName() const = 0;
     virtual std::string getSignerSubjectDN() const = 0;
     virtual HashAlgorithm getHashAlgorithm() const = 0;
-    virtual CertificateValidationStatus validateCertificate(std::chrono::system_clock::time_point validation_time, bool ocspRevocationCheck, bool useAIACertFetch) = 0;
+
+    // Blocking if doneCallback to validateCertificateAsync has not yet been called
+    virtual CertificateValidationStatus validateCertificateResult() = 0;
+    virtual void validateCertificateAsync(std::chrono::system_clock::time_point validation_time, bool ocspRevocationCheck, bool useAIACertFetch, const std::function<void()> &doneCallback) = 0;
     virtual std::unique_ptr<X509CertificateInfo> getCertificateInfo() const = 0;
     virtual ~VerificationInterface();
     VerificationInterface() = default;
@@ -50,8 +77,9 @@ class SigningInterface
 {
 public:
     virtual void addData(unsigned char *data_block, int data_len) = 0;
+    virtual SignatureType signatureType() const = 0;
     virtual std::unique_ptr<X509CertificateInfo> getCertificateInfo() const = 0;
-    virtual std::optional<GooString> signDetached(const std::string &password) = 0;
+    virtual std::variant<std::vector<unsigned char>, SigningError> signDetached(const std::string &password) = 0;
     virtual ~SigningInterface();
     SigningInterface() = default;
     SigningInterface(const SigningInterface &other) = delete;
@@ -66,7 +94,7 @@ public:
         NSS3,
         GPGME
     };
-    virtual std::unique_ptr<VerificationInterface> createVerificationHandler(std::vector<unsigned char> &&pkcs7) = 0;
+    virtual std::unique_ptr<VerificationInterface> createVerificationHandler(std::vector<unsigned char> &&pkcs7, SignatureType type) = 0;
     virtual std::unique_ptr<SigningInterface> createSigningHandler(const std::string &certID, HashAlgorithm digestAlgTag) = 0;
     virtual std::vector<std::unique_ptr<X509CertificateInfo>> getAvailableSigningCertificates() = 0;
     virtual ~Backend();

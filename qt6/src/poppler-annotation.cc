@@ -1,5 +1,5 @@
 /* poppler-annotation.cc: qt interface to poppler
- * Copyright (C) 2006, 2009, 2012-2015, 2018-2022 Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2006, 2009, 2012-2015, 2018-2022, 2024 Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2006, 2008, 2010 Pino Toscano <pino@kde.org>
  * Copyright (C) 2012, Guillermo A. Amaral B. <gamaral@kde.org>
  * Copyright (C) 2012-2014 Fabio D'Urso <fabiodurso@hotmail.it>
@@ -13,8 +13,9 @@
  * Copyright (C) 2020-2022 Oliver Sander <oliver.sander@tu-dresden.de>
  * Copyright (C) 2020 Katarina Behrens <Katarina.Behrens@cib.de>
  * Copyright (C) 2020 Thorsten Behrens <Thorsten.Behrens@CIB.de>
- * Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
+ * Copyright (C) 2020, 2024 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by Technische Universität Dresden
  * Copyright (C) 2021 Mahmoud Ahmed Khalil <mahmoudkhalil11@gmail.com>
+ * Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Adapting code from
  *   Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
  *
@@ -47,6 +48,7 @@
 #include "poppler-annotation-private.h"
 #include "poppler-page-private.h"
 #include "poppler-private.h"
+#include "poppler-form.h"
 
 // poppler includes
 #include <Page.h>
@@ -339,7 +341,7 @@ PDFRectangle AnnotationPrivate::boundaryToPdfRectangle(const QRectF &r, int rFla
     return Poppler::boundaryToPdfRectangle(pdfPage, r, rFlags);
 }
 
-AnnotPath *AnnotationPrivate::toAnnotPath(const QVector<QPointF> &list) const
+std::unique_ptr<AnnotPath> AnnotationPrivate::toAnnotPath(const QVector<QPointF> &list) const
 {
     const int count = list.size();
     std::vector<AnnotCoord> ac;
@@ -354,7 +356,7 @@ AnnotPath *AnnotationPrivate::toAnnotPath(const QVector<QPointF> &list) const
         ac.emplace_back(x, y);
     }
 
-    return new AnnotPath(std::move(ac));
+    return std::make_unique<AnnotPath>(std::move(ac));
 }
 
 std::vector<std::unique_ptr<Annotation>> AnnotationPrivate::findAnnotations(::Page *pdfPage, DocumentData *doc, const QSet<Annotation::SubType> &subtypes, int parentID)
@@ -865,7 +867,7 @@ public:
 
 Annotation::Style::Style() : d(new Private) { }
 
-Annotation::Style::Style(const Style &other) : d(other.d) { }
+Annotation::Style::Style(const Style &other) = default;
 
 Annotation::Style &Annotation::Style::operator=(const Style &other)
 {
@@ -876,7 +878,7 @@ Annotation::Style &Annotation::Style::operator=(const Style &other)
     return *this;
 }
 
-Annotation::Style::~Style() { }
+Annotation::Style::~Style() = default;
 
 QColor Annotation::Style::color() const
 {
@@ -982,7 +984,7 @@ public:
 
 Annotation::Popup::Popup() : d(new Private) { }
 
-Annotation::Popup::Popup(const Popup &other) : d(other.d) { }
+Annotation::Popup::Popup(const Popup &other) = default;
 
 Annotation::Popup &Annotation::Popup::operator=(const Popup &other)
 {
@@ -993,7 +995,7 @@ Annotation::Popup &Annotation::Popup::operator=(const Popup &other)
     return *this;
 }
 
-Annotation::Popup::~Popup() { }
+Annotation::Popup::~Popup() = default;
 
 int Annotation::Popup::flags() const
 {
@@ -1047,7 +1049,7 @@ void Annotation::Popup::setText(const QString &text)
 
 Annotation::Annotation(AnnotationPrivate &dd) : d_ptr(&dd) { }
 
-Annotation::~Annotation() { }
+Annotation::~Annotation() = default;
 
 QString Annotation::author() const
 {
@@ -1156,9 +1158,8 @@ void Annotation::setModificationDate(const QDateTime &date)
     if (d->pdfAnnot) {
         if (date.isValid()) {
             const time_t t = date.toSecsSinceEpoch();
-            GooString *s = timeToDateString(&t);
-            d->pdfAnnot->setModified(s);
-            delete s;
+            std::unique_ptr<GooString> s = timeToDateString(&t);
+            d->pdfAnnot->setModified(std::move(s));
         } else {
             d->pdfAnnot->setModified(nullptr);
         }
@@ -1195,9 +1196,8 @@ void Annotation::setCreationDate(const QDateTime &date)
     if (markupann) {
         if (date.isValid()) {
             const time_t t = date.toSecsSinceEpoch();
-            GooString *s = timeToDateString(&t);
-            markupann->setDate(s);
-            delete s;
+            std::unique_ptr<GooString> s = timeToDateString(&t);
+            markupann->setDate(std::move(s));
         } else {
             markupann->setDate(nullptr);
         }
@@ -1311,7 +1311,7 @@ void Annotation::setBoundary(const QRectF &boundary)
     if (rect == d->pdfAnnot->getRect()) {
         return;
     }
-    d->pdfAnnot->setRect(&rect);
+    d->pdfAnnot->setRect(rect);
 }
 
 Annotation::Style Annotation::style() const
@@ -1566,7 +1566,7 @@ void Annotation::setAnnotationAppearance(const AnnotationAppearance &annotationA
 // END Annotation implementation
 
 /** TextAnnotation [Annotation] */
-TextAnnotationPrivate::TextAnnotationPrivate() : AnnotationPrivate(), textType(TextAnnotation::Linked), textIcon(QStringLiteral("Note")), inplaceAlign(TextAnnotation::InplaceAlignLeft), inplaceIntent(TextAnnotation::Unknown) { }
+TextAnnotationPrivate::TextAnnotationPrivate() : textType(TextAnnotation::Linked), textIcon(QStringLiteral("Note")), inplaceAlign(TextAnnotation::InplaceAlignLeft), inplaceIntent(TextAnnotation::Unknown) { }
 
 Annotation *TextAnnotationPrivate::makeAlias()
 {
@@ -1656,7 +1656,7 @@ TextAnnotation::TextAnnotation(TextAnnotation::TextType type) : Annotation(*new 
 
 TextAnnotation::TextAnnotation(TextAnnotationPrivate &dd) : Annotation(dd) { }
 
-TextAnnotation::~TextAnnotation() { }
+TextAnnotation::~TextAnnotation() = default;
 
 Annotation::SubType TextAnnotation::subType() const
 {
@@ -1968,7 +1968,7 @@ public:
 };
 
 LineAnnotationPrivate::LineAnnotationPrivate()
-    : AnnotationPrivate(), lineStartStyle(LineAnnotation::None), lineEndStyle(LineAnnotation::None), lineClosed(false), lineShowCaption(false), lineLeadingFwdPt(0), lineLeadingBackPt(0), lineIntent(LineAnnotation::Unknown)
+    : lineStartStyle(LineAnnotation::None), lineEndStyle(LineAnnotation::None), lineClosed(false), lineShowCaption(false), lineLeadingFwdPt(0), lineLeadingBackPt(0), lineIntent(LineAnnotation::Unknown)
 {
 }
 
@@ -2019,7 +2019,7 @@ LineAnnotation::LineAnnotation(LineAnnotation::LineType type) : Annotation(*new 
 
 LineAnnotation::LineAnnotation(LineAnnotationPrivate &dd) : Annotation(dd) { }
 
-LineAnnotation::~LineAnnotation() { }
+LineAnnotation::~LineAnnotation() = default;
 
 Annotation::SubType LineAnnotation::subType() const
 {
@@ -2106,9 +2106,8 @@ void LineAnnotation::setLinePoints(const QVector<QPointF> &points)
         lineann->setVertices(x1, y1, x2, y2);
     } else {
         AnnotPolygon *polyann = static_cast<AnnotPolygon *>(d->pdfAnnot);
-        AnnotPath *p = d->toAnnotPath(points);
-        polyann->setVertices(p);
-        delete p;
+        const std::unique_ptr<AnnotPath> p = d->toAnnotPath(points);
+        polyann->setVertices(*p);
     }
 }
 
@@ -2419,7 +2418,7 @@ public:
     QColor geomInnerColor;
 };
 
-GeomAnnotationPrivate::GeomAnnotationPrivate() : AnnotationPrivate(), geomType(GeomAnnotation::InscribedSquare) { }
+GeomAnnotationPrivate::GeomAnnotationPrivate() : geomType(GeomAnnotation::InscribedSquare) { }
 
 Annotation *GeomAnnotationPrivate::makeAlias()
 {
@@ -2458,7 +2457,7 @@ GeomAnnotation::GeomAnnotation() : Annotation(*new GeomAnnotationPrivate()) { }
 
 GeomAnnotation::GeomAnnotation(GeomAnnotationPrivate &dd) : Annotation(dd) { }
 
-GeomAnnotation::~GeomAnnotation() { }
+GeomAnnotation::~GeomAnnotation() = default;
 
 Annotation::SubType GeomAnnotation::subType() const
 {
@@ -2540,7 +2539,7 @@ public:
     AnnotQuadrilaterals *toQuadrilaterals(const QList<HighlightAnnotation::Quad> &quads) const;
 };
 
-HighlightAnnotationPrivate::HighlightAnnotationPrivate() : AnnotationPrivate(), highlightType(HighlightAnnotation::Highlight) { }
+HighlightAnnotationPrivate::HighlightAnnotationPrivate() : highlightType(HighlightAnnotation::Highlight) { }
 
 Annotation *HighlightAnnotationPrivate::makeAlias()
 {
@@ -2645,7 +2644,7 @@ HighlightAnnotation::HighlightAnnotation() : Annotation(*new HighlightAnnotation
 
 HighlightAnnotation::HighlightAnnotation(HighlightAnnotationPrivate &dd) : Annotation(dd) { }
 
-HighlightAnnotation::~HighlightAnnotation() { }
+HighlightAnnotation::~HighlightAnnotation() = default;
 
 Annotation::SubType HighlightAnnotation::subType() const
 {
@@ -2709,7 +2708,7 @@ void HighlightAnnotation::setHighlightQuads(const QList<HighlightAnnotation::Qua
 
     AnnotTextMarkup *hlann = static_cast<AnnotTextMarkup *>(d->pdfAnnot);
     AnnotQuadrilaterals *quadrilaterals = d->toQuadrilaterals(quads);
-    hlann->setQuadrilaterals(quadrilaterals);
+    hlann->setQuadrilaterals(*quadrilaterals);
     delete quadrilaterals;
 }
 
@@ -2728,7 +2727,7 @@ public:
     QImage stampCustomImage;
 };
 
-StampAnnotationPrivate::StampAnnotationPrivate() : AnnotationPrivate(), stampIconName(QStringLiteral("Draft")) { }
+StampAnnotationPrivate::StampAnnotationPrivate() : stampIconName(QStringLiteral("Draft")) { }
 
 Annotation *StampAnnotationPrivate::makeAlias()
 {
@@ -2854,7 +2853,7 @@ StampAnnotation::StampAnnotation() : Annotation(*new StampAnnotationPrivate()) {
 
 StampAnnotation::StampAnnotation(StampAnnotationPrivate &dd) : Annotation(dd) { }
 
-StampAnnotation::~StampAnnotation() { }
+StampAnnotation::~StampAnnotation() = default;
 
 Annotation::SubType StampAnnotation::subType() const
 {
@@ -2906,6 +2905,216 @@ void StampAnnotation::setStampCustomImage(const QImage &image)
     stampann->setCustomImage(annotCustomImage);
 }
 
+/** SignatureAnnotation [Annotation] */
+class SignatureAnnotationPrivate : public AnnotationPrivate
+{
+public:
+    SignatureAnnotationPrivate();
+    Annotation *makeAlias() override;
+    Annot *createNativeAnnot(::Page *destPage, DocumentData *doc) override;
+
+    // data fields
+    QString text;
+    QString leftText;
+    double fontSize = 10.0;
+    double leftFontSize = 20.0;
+    QColor fontColor = Qt::red;
+    QColor borderColor = Qt::red;
+    double borderWidth = 1.5;
+    QColor backgroundColor = QColor(240, 240, 240);
+    QString imagePath;
+    QString fieldPartialName;
+    std::unique_ptr<::FormFieldSignature> field = nullptr;
+};
+
+SignatureAnnotationPrivate::SignatureAnnotationPrivate() = default;
+
+Annotation *SignatureAnnotationPrivate::makeAlias()
+{
+    return new SignatureAnnotation(*this);
+}
+
+Annot *SignatureAnnotationPrivate::createNativeAnnot(::Page *destPage, DocumentData *doc)
+{
+    SignatureAnnotation *q = static_cast<SignatureAnnotation *>(makeAlias());
+
+    // Set page and document
+    pdfPage = destPage;
+    parentDoc = doc;
+
+    // Set pdfAnnot
+    PDFRectangle rect = boundaryToPdfRectangle(boundary, flags);
+
+    std::unique_ptr<GooString> gSignatureText = std::unique_ptr<GooString>(QStringToUnicodeGooString(text));
+    std::unique_ptr<GooString> gSignatureLeftText = std::unique_ptr<GooString>(QStringToUnicodeGooString(leftText));
+
+    std::optional<PDFDoc::SignatureData> sig = destPage->getDoc()->createSignature(destPage, QStringToGooString(fieldPartialName), rect, *gSignatureText, *gSignatureLeftText, fontSize, leftFontSize, convertQColor(fontColor), borderWidth,
+                                                                                   convertQColor(borderColor), convertQColor(backgroundColor), imagePath.toStdString());
+
+    if (!sig) {
+        return nullptr;
+    }
+
+    sig->formWidget->updateWidgetAppearance();
+    field = std::move(sig->field);
+
+    // Set properties
+    flushBaseAnnotationProperties();
+
+    pdfAnnot = sig->annotWidget;
+
+    pdfAnnot->incRefCnt();
+
+    delete q;
+
+    return pdfAnnot;
+}
+
+SignatureAnnotation::SignatureAnnotation() : Annotation(*new SignatureAnnotationPrivate()) { }
+
+SignatureAnnotation::SignatureAnnotation(SignatureAnnotationPrivate &dd) : Annotation(dd) { }
+
+SignatureAnnotation::~SignatureAnnotation() = default;
+
+Annotation::SubType SignatureAnnotation::subType() const
+{
+    return AWidget;
+}
+
+void SignatureAnnotation::setText(const QString &text)
+{
+    Q_D(SignatureAnnotation);
+    d->text = text;
+}
+
+void SignatureAnnotation::setLeftText(const QString &text)
+{
+    Q_D(SignatureAnnotation);
+    d->leftText = text;
+}
+
+double SignatureAnnotation::fontSize() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->fontSize;
+}
+
+void SignatureAnnotation::setFontSize(double fontSize)
+{
+    Q_D(SignatureAnnotation);
+    d->fontSize = fontSize;
+}
+
+double SignatureAnnotation::leftFontSize() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->leftFontSize;
+}
+
+void SignatureAnnotation::setLeftFontSize(double fontSize)
+{
+    Q_D(SignatureAnnotation);
+    d->leftFontSize = fontSize;
+}
+
+QColor SignatureAnnotation::fontColor() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->fontColor;
+}
+
+void SignatureAnnotation::setFontColor(const QColor &color)
+{
+    Q_D(SignatureAnnotation);
+    d->fontColor = color;
+}
+
+QColor SignatureAnnotation::borderColor() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->borderColor;
+}
+
+void SignatureAnnotation::setBorderColor(const QColor &color)
+{
+    Q_D(SignatureAnnotation);
+    d->borderColor = color;
+}
+
+QColor SignatureAnnotation::backgroundColor() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->backgroundColor;
+}
+
+double SignatureAnnotation::borderWidth() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->borderWidth;
+}
+
+void SignatureAnnotation::setBorderWidth(double width)
+{
+    Q_D(SignatureAnnotation);
+    d->borderWidth = width;
+}
+
+void SignatureAnnotation::setBackgroundColor(const QColor &color)
+{
+    Q_D(SignatureAnnotation);
+    d->backgroundColor = color;
+}
+
+QString SignatureAnnotation::imagePath() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->imagePath;
+}
+
+void SignatureAnnotation::setImagePath(const QString &imagePath)
+{
+    Q_D(SignatureAnnotation);
+    d->imagePath = imagePath;
+}
+
+QString SignatureAnnotation::fieldPartialName() const
+{
+    Q_D(const SignatureAnnotation);
+    return d->fieldPartialName;
+}
+
+void SignatureAnnotation::setFieldPartialName(const QString &fieldPartialName)
+{
+    Q_D(SignatureAnnotation);
+    d->fieldPartialName = fieldPartialName;
+}
+
+SignatureAnnotation::SigningResult SignatureAnnotation::sign(const QString &outputFileName, const PDFConverter::NewSignatureData &data)
+{
+    Q_D(SignatureAnnotation);
+    auto formField = std::make_unique<FormFieldSignature>(d->parentDoc, d->pdfPage, static_cast<::FormWidgetSignature *>(d->field->getCreateWidget()));
+
+    const auto result = formField->sign(outputFileName, data);
+
+    switch (result) {
+    case FormFieldSignature::SigningSuccess:
+        return SigningSuccess;
+    case FormFieldSignature::FieldAlreadySigned:
+        return FieldAlreadySigned;
+    case FormFieldSignature::GenericSigningError:
+        return GenericSigningError;
+    case FormFieldSignature::InternalError:
+        return InternalError;
+    case FormFieldSignature::KeyMissing:
+        return KeyMissing;
+    case FormFieldSignature::WriteFailed:
+        return WriteFailed;
+    case FormFieldSignature::UserCancelled:
+        return UserCancelled;
+    }
+    return GenericSigningError;
+}
+
 /** InkAnnotation [Annotation] */
 class InkAnnotationPrivate : public AnnotationPrivate
 {
@@ -2918,10 +3127,10 @@ public:
     QList<QVector<QPointF>> inkPaths;
 
     // helper
-    AnnotPath **toAnnotPaths(const QList<QVector<QPointF>> &paths);
+    std::vector<std::unique_ptr<AnnotPath>> toAnnotPaths(const QList<QVector<QPointF>> &paths);
 };
 
-InkAnnotationPrivate::InkAnnotationPrivate() : AnnotationPrivate() { }
+InkAnnotationPrivate::InkAnnotationPrivate() = default;
 
 Annotation *InkAnnotationPrivate::makeAlias()
 {
@@ -2929,12 +3138,12 @@ Annotation *InkAnnotationPrivate::makeAlias()
 }
 
 // Note: Caller is required to delete array elements and the array itself after use
-AnnotPath **InkAnnotationPrivate::toAnnotPaths(const QList<QVector<QPointF>> &paths)
+std::vector<std::unique_ptr<AnnotPath>> InkAnnotationPrivate::toAnnotPaths(const QList<QVector<QPointF>> &paths)
 {
-    const int pathsNumber = paths.size();
-    AnnotPath **res = new AnnotPath *[pathsNumber];
-    for (int i = 0; i < pathsNumber; ++i) {
-        res[i] = toAnnotPath(paths[i]);
+    std::vector<std::unique_ptr<AnnotPath>> res;
+    res.reserve(paths.size());
+    for (const auto &path : paths) {
+        res.push_back(toAnnotPath(path));
     }
     return res;
 }
@@ -2967,7 +3176,7 @@ InkAnnotation::InkAnnotation() : Annotation(*new InkAnnotationPrivate()) { }
 
 InkAnnotation::InkAnnotation(InkAnnotationPrivate &dd) : Annotation(dd) { }
 
-InkAnnotation::~InkAnnotation() { }
+InkAnnotation::~InkAnnotation() = default;
 
 Annotation::SubType InkAnnotation::subType() const
 {
@@ -2984,21 +3193,19 @@ QList<QVector<QPointF>> InkAnnotation::inkPaths() const
 
     const AnnotInk *inkann = static_cast<const AnnotInk *>(d->pdfAnnot);
 
-    const AnnotPath *const *paths = inkann->getInkList();
-    if (!paths || !inkann->getInkListLength()) {
+    const std::vector<std::unique_ptr<AnnotPath>> &paths = inkann->getInkList();
+    if (paths.empty()) {
         return {};
     }
 
     double MTX[6];
     d->fillTransformationMTX(MTX);
 
-    const int pathsNumber = inkann->getInkListLength();
     QList<QVector<QPointF>> inkPaths;
-    inkPaths.reserve(pathsNumber);
-    for (int m = 0; m < pathsNumber; ++m) {
+    inkPaths.reserve(paths.size());
+    for (const auto &path : paths) {
         // transform each path in a list of normalized points ..
         QVector<QPointF> localList;
-        const AnnotPath *path = paths[m];
         const int pointsNumber = path ? path->getCoordsLength() : 0;
         for (int n = 0; n < pointsNumber; ++n) {
             QPointF point;
@@ -3008,6 +3215,7 @@ QList<QVector<QPointF>> InkAnnotation::inkPaths() const
         // ..and add it to the annotation
         inkPaths.append(localList);
     }
+    inkPaths.shrink_to_fit();
     return inkPaths;
 }
 
@@ -3021,14 +3229,8 @@ void InkAnnotation::setInkPaths(const QList<QVector<QPointF>> &paths)
     }
 
     AnnotInk *inkann = static_cast<AnnotInk *>(d->pdfAnnot);
-    AnnotPath **annotpaths = d->toAnnotPaths(paths);
-    const int pathsNumber = paths.size();
-    inkann->setInkList(annotpaths, pathsNumber);
-
-    for (int i = 0; i < pathsNumber; ++i) {
-        delete annotpaths[i];
-    }
-    delete[] annotpaths;
+    const std::vector<std::unique_ptr<AnnotPath>> annotpaths = d->toAnnotPaths(paths);
+    inkann->setInkList(annotpaths);
 }
 
 /** LinkAnnotation [Annotation] */
@@ -3046,9 +3248,9 @@ public:
     QPointF linkRegion[4];
 };
 
-LinkAnnotationPrivate::LinkAnnotationPrivate() : AnnotationPrivate(), linkHLMode(LinkAnnotation::Invert) { }
+LinkAnnotationPrivate::LinkAnnotationPrivate() : linkHLMode(LinkAnnotation::Invert) { }
 
-LinkAnnotationPrivate::~LinkAnnotationPrivate() { }
+LinkAnnotationPrivate::~LinkAnnotationPrivate() = default;
 
 Annotation *LinkAnnotationPrivate::makeAlias()
 {
@@ -3064,7 +3266,7 @@ LinkAnnotation::LinkAnnotation() : Annotation(*new LinkAnnotationPrivate()) { }
 
 LinkAnnotation::LinkAnnotation(LinkAnnotationPrivate &dd) : Annotation(dd) { }
 
-LinkAnnotation::~LinkAnnotation() { }
+LinkAnnotation::~LinkAnnotation() = default;
 
 Annotation::SubType LinkAnnotation::subType() const
 {
@@ -3127,7 +3329,7 @@ public:
     CaretAnnotation::CaretSymbol symbol;
 };
 
-CaretAnnotationPrivate::CaretAnnotationPrivate() : AnnotationPrivate(), symbol(CaretAnnotation::None) { }
+CaretAnnotationPrivate::CaretAnnotationPrivate() : symbol(CaretAnnotation::None) { }
 
 Annotation *CaretAnnotationPrivate::makeAlias()
 {
@@ -3159,7 +3361,7 @@ CaretAnnotation::CaretAnnotation() : Annotation(*new CaretAnnotationPrivate()) {
 
 CaretAnnotation::CaretAnnotation(CaretAnnotationPrivate &dd) : Annotation(dd) { }
 
-CaretAnnotation::~CaretAnnotation() { }
+CaretAnnotation::~CaretAnnotation() = default;
 
 Annotation::SubType CaretAnnotation::subType() const
 {
@@ -3205,7 +3407,7 @@ public:
     EmbeddedFile *embfile;
 };
 
-FileAttachmentAnnotationPrivate::FileAttachmentAnnotationPrivate() : AnnotationPrivate(), icon(QStringLiteral("PushPin")), embfile(nullptr) { }
+FileAttachmentAnnotationPrivate::FileAttachmentAnnotationPrivate() : icon(QStringLiteral("PushPin")), embfile(nullptr) { }
 
 FileAttachmentAnnotationPrivate::~FileAttachmentAnnotationPrivate()
 {
@@ -3226,7 +3428,7 @@ FileAttachmentAnnotation::FileAttachmentAnnotation() : Annotation(*new FileAttac
 
 FileAttachmentAnnotation::FileAttachmentAnnotation(FileAttachmentAnnotationPrivate &dd) : Annotation(dd) { }
 
-FileAttachmentAnnotation::~FileAttachmentAnnotation() { }
+FileAttachmentAnnotation::~FileAttachmentAnnotation() = default;
 
 Annotation::SubType FileAttachmentAnnotation::subType() const
 {
@@ -3271,7 +3473,7 @@ public:
     SoundObject *sound;
 };
 
-SoundAnnotationPrivate::SoundAnnotationPrivate() : AnnotationPrivate(), icon(QStringLiteral("Speaker")), sound(nullptr) { }
+SoundAnnotationPrivate::SoundAnnotationPrivate() : icon(QStringLiteral("Speaker")), sound(nullptr) { }
 
 SoundAnnotationPrivate::~SoundAnnotationPrivate()
 {
@@ -3292,7 +3494,7 @@ SoundAnnotation::SoundAnnotation() : Annotation(*new SoundAnnotationPrivate()) {
 
 SoundAnnotation::SoundAnnotation(SoundAnnotationPrivate &dd) : Annotation(dd) { }
 
-SoundAnnotation::~SoundAnnotation() { }
+SoundAnnotation::~SoundAnnotation() = default;
 
 Annotation::SubType SoundAnnotation::subType() const
 {
@@ -3337,7 +3539,7 @@ public:
     QString title;
 };
 
-MovieAnnotationPrivate::MovieAnnotationPrivate() : AnnotationPrivate(), movie(nullptr) { }
+MovieAnnotationPrivate::MovieAnnotationPrivate() : movie(nullptr) { }
 
 MovieAnnotationPrivate::~MovieAnnotationPrivate()
 {
@@ -3358,7 +3560,7 @@ MovieAnnotation::MovieAnnotation() : Annotation(*new MovieAnnotationPrivate()) {
 
 MovieAnnotation::MovieAnnotation(MovieAnnotationPrivate &dd) : Annotation(dd) { }
 
-MovieAnnotation::~MovieAnnotation() { }
+MovieAnnotation::~MovieAnnotation() = default;
 
 Annotation::SubType MovieAnnotation::subType() const
 {
@@ -3403,7 +3605,7 @@ public:
     QString title;
 };
 
-ScreenAnnotationPrivate::ScreenAnnotationPrivate() : AnnotationPrivate(), action(nullptr) { }
+ScreenAnnotationPrivate::ScreenAnnotationPrivate() : action(nullptr) { }
 
 ScreenAnnotationPrivate::~ScreenAnnotationPrivate()
 {
@@ -3424,7 +3626,7 @@ Annot *ScreenAnnotationPrivate::createNativeAnnot(::Page *destPage, DocumentData
 
 ScreenAnnotation::ScreenAnnotation() : Annotation(*new ScreenAnnotationPrivate()) { }
 
-ScreenAnnotation::~ScreenAnnotation() { }
+ScreenAnnotation::~ScreenAnnotation() = default;
 
 Annotation::SubType ScreenAnnotation::subType() const
 {
@@ -3483,7 +3685,7 @@ WidgetAnnotation::WidgetAnnotation(WidgetAnnotationPrivate &dd) : Annotation(dd)
 
 WidgetAnnotation::WidgetAnnotation() : Annotation(*new WidgetAnnotationPrivate()) { }
 
-WidgetAnnotation::~WidgetAnnotation() { }
+WidgetAnnotation::~WidgetAnnotation() = default;
 
 Annotation::SubType WidgetAnnotation::subType() const
 {
@@ -3500,14 +3702,14 @@ std::unique_ptr<Link> WidgetAnnotation::additionalAction(AdditionalActionType ty
 class RichMediaAnnotation::Params::Private
 {
 public:
-    Private() { }
+    Private() = default;
 
     QString flashVars;
 };
 
 RichMediaAnnotation::Params::Params() : d(new Private) { }
 
-RichMediaAnnotation::Params::~Params() { }
+RichMediaAnnotation::Params::~Params() = default;
 
 void RichMediaAnnotation::Params::setFlashVars(const QString &flashVars)
 {
@@ -3535,7 +3737,7 @@ public:
 
 RichMediaAnnotation::Instance::Instance() : d(new Private) { }
 
-RichMediaAnnotation::Instance::~Instance() { }
+RichMediaAnnotation::Instance::~Instance() = default;
 
 void RichMediaAnnotation::Instance::setType(Type type)
 {
@@ -3561,7 +3763,7 @@ RichMediaAnnotation::Params *RichMediaAnnotation::Instance::params() const
 class RichMediaAnnotation::Configuration::Private
 {
 public:
-    Private() { }
+    Private() = default;
     ~Private()
     {
         qDeleteAll(instances);
@@ -3578,7 +3780,7 @@ public:
 
 RichMediaAnnotation::Configuration::Configuration() : d(new Private) { }
 
-RichMediaAnnotation::Configuration::~Configuration() { }
+RichMediaAnnotation::Configuration::~Configuration() = default;
 
 void RichMediaAnnotation::Configuration::setType(Type type)
 {
@@ -3629,7 +3831,7 @@ public:
 
 RichMediaAnnotation::Asset::Asset() : d(new Private) { }
 
-RichMediaAnnotation::Asset::~Asset() { }
+RichMediaAnnotation::Asset::~Asset() = default;
 
 void RichMediaAnnotation::Asset::setName(const QString &name)
 {
@@ -3655,7 +3857,7 @@ EmbeddedFile *RichMediaAnnotation::Asset::embeddedFile() const
 class RichMediaAnnotation::Content::Private
 {
 public:
-    Private() { }
+    Private() = default;
     ~Private()
     {
         qDeleteAll(configurations);
@@ -3674,7 +3876,7 @@ public:
 
 RichMediaAnnotation::Content::Content() : d(new Private) { }
 
-RichMediaAnnotation::Content::~Content() { }
+RichMediaAnnotation::Content::~Content() = default;
 
 void RichMediaAnnotation::Content::setConfigurations(const QList<RichMediaAnnotation::Configuration *> &configurations)
 {
@@ -3712,7 +3914,7 @@ public:
 
 RichMediaAnnotation::Activation::Activation() : d(new Private) { }
 
-RichMediaAnnotation::Activation::~Activation() { }
+RichMediaAnnotation::Activation::~Activation() = default;
 
 void RichMediaAnnotation::Activation::setCondition(Condition condition)
 {
@@ -3734,7 +3936,7 @@ public:
 
 RichMediaAnnotation::Deactivation::Deactivation() : d(new Private) { }
 
-RichMediaAnnotation::Deactivation::~Deactivation() { }
+RichMediaAnnotation::Deactivation::~Deactivation() = default;
 
 void RichMediaAnnotation::Deactivation::setCondition(Condition condition)
 {
@@ -3757,7 +3959,7 @@ public:
 
 RichMediaAnnotation::Settings::Settings() : d(new Private) { }
 
-RichMediaAnnotation::Settings::~Settings() { }
+RichMediaAnnotation::Settings::~Settings() = default;
 
 void RichMediaAnnotation::Settings::setActivation(RichMediaAnnotation::Activation *activation)
 {
@@ -3812,7 +4014,7 @@ RichMediaAnnotation::RichMediaAnnotation() : Annotation(*new RichMediaAnnotation
 
 RichMediaAnnotation::RichMediaAnnotation(RichMediaAnnotationPrivate &dd) : Annotation(dd) { }
 
-RichMediaAnnotation::~RichMediaAnnotation() { }
+RichMediaAnnotation::~RichMediaAnnotation() = default;
 
 Annotation::SubType RichMediaAnnotation::subType() const
 {

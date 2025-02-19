@@ -11,7 +11,7 @@
 // All changes made under the Poppler project to this file are licensed
 // under GPL version 2 or later
 //
-// Copyright (C) 2008, 2010, 2014, 2018, 2019, 2021, 2022 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2008, 2010, 2014, 2018, 2019, 2021, 2022, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Paweł Wiejacha <pawel.wiejacha@gmail.com>
 // Copyright (C) 2013, 2014, 2021 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2018 Stefan Brüns <stefan.bruens@rwth-aachen.de>
@@ -112,7 +112,7 @@ SplashXPathScanner::SplashXPathScanner(const SplashXPath &xPath, bool eoA, int c
     computeIntersections(xPath);
 }
 
-SplashXPathScanner::~SplashXPathScanner() { }
+SplashXPathScanner::~SplashXPathScanner() = default;
 
 void SplashXPathScanner::getBBoxAA(int *xMinA, int *yMinA, int *xMaxA, int *yMaxA) const
 {
@@ -318,7 +318,7 @@ void SplashXPathScanner::computeIntersections(const SplashXPath &xPath)
         }
     }
     for (auto &line : allIntersections) {
-        std::sort(line.begin(), line.end(), [](const SplashIntersect i0, const SplashIntersect i1) { return i0.x0 < i1.x0; });
+        std::ranges::sort(line, [](const SplashIntersect i0, const SplashIntersect i1) { return i0.x0 < i1.x0; });
     }
 }
 
@@ -429,7 +429,7 @@ void SplashXPathScanner::renderAALine(SplashBitmap *aaBuf, int *x0, int *x1, int
     *x1 = (xxMax - 1) / splashAASize;
 }
 
-void SplashXPathScanner::clipAALine(SplashBitmap *aaBuf, int *x0, int *x1, int y) const
+void SplashXPathScanner::clipAALine(SplashBitmap *aaBuf, const int *x0, const int *x1, int y) const
 {
     int xx0, xx1, xx, yy, yyMin, yyMax, interCount;
     size_t interIdx;

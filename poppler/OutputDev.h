@@ -19,7 +19,7 @@
 // Copyright (C) 2007, 2011, 2017, 2021, 2023 Adrian Johnson <ajohnson@redneon.com>
 // Copyright (C) 2009-2013, 2015 Thomas Freitag <Thomas.Freitag@alfa.de>
 // Copyright (C) 2009, 2011 Carlos Garcia Campos <carlosgc@gnome.org>
-// Copyright (C) 2009, 2012, 2013, 2018, 2019, 2021 Albert Astals Cid <aacid@kde.org>
+// Copyright (C) 2009, 2012, 2013, 2018, 2019, 2021, 2024 Albert Astals Cid <aacid@kde.org>
 // Copyright (C) 2010 Christian Feuersänger <cfeuersaenger@googlemail.com>
 // Copyright (C) 2012 Fabio D'Urso <fabiodurso@hotmail.it>
 // Copyright (C) 2012 William Bader <williambader@hotmail.com>
@@ -27,6 +27,7 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
 // Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
 // Copyright (C) 2020 Philipp Knechtges <philipp-dev@knechtges.com>
+// Copyright (C) 2024 Nelson Benítez León <nbenitezl@gmail.com>
 //
 // To see a description of the changes please see the Changelog file that
 // came with your tarball or type make ChangeLog if you are building from git
@@ -111,6 +112,9 @@ public:
     // box is the crop box?
     virtual bool needClipToCropBox() { return false; }
 
+    // Does this device supports transparency (alpha channel) in JPX streams?
+    virtual bool supportJPXtransparency() { return false; }
+
     //----- initialization and control
 
     // Set default transform matrix.
@@ -142,27 +146,27 @@ public:
 
         auto invalidref = Ref::INVALID();
         if (defaultGrayProfile) {
-            auto cs = new GfxICCBasedColorSpace(1, new GfxDeviceGrayColorSpace(), &invalidref);
+            auto cs = std::make_unique<GfxICCBasedColorSpace>(1, std::make_unique<GfxDeviceGrayColorSpace>(), &invalidref);
 
             cs->setProfile(defaultGrayProfile);
             cs->buildTransforms(state); // needs to happen after state->setDisplayProfile has been called
-            state->setDefaultGrayColorSpace(cs);
+            state->setDefaultGrayColorSpace(std::move(cs));
         }
 
         if (defaultRGBProfile) {
-            auto cs = new GfxICCBasedColorSpace(3, new GfxDeviceRGBColorSpace(), &invalidref);
+            auto cs = std::make_unique<GfxICCBasedColorSpace>(3, std::make_unique<GfxDeviceRGBColorSpace>(), &invalidref);
 
             cs->setProfile(defaultRGBProfile);
             cs->buildTransforms(state); // needs to happen after state->setDisplayProfile has been called
-            state->setDefaultRGBColorSpace(cs);
+            state->setDefaultRGBColorSpace(std::move(cs));
         }
 
         if (defaultCMYKProfile) {
-            auto cs = new GfxICCBasedColorSpace(4, new GfxDeviceCMYKColorSpace(), &invalidref);
+            auto cs = std::make_unique<GfxICCBasedColorSpace>(4, std::make_unique<GfxDeviceCMYKColorSpace>(), &invalidref);
 
             cs->setProfile(defaultCMYKProfile);
             cs->buildTransforms(state); // needs to happen after state->setDisplayProfile has been called
-            state->setDefaultCMYKColorSpace(cs);
+            state->setDefaultCMYKColorSpace(std::move(cs));
         }
 #endif
     }

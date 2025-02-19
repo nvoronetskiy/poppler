@@ -8,6 +8,7 @@
  * Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, <info@kdab.com>. Work sponsored by the LiMux project of the city of Munich
  * Copyright (C) 2018 Adam Reichold <adam.reichold@t-online.de>
  * Copyright (C) 2019, 2020 Oliver Sander <oliver.sander@tu-dresden.de>
+ * Copyright (C) 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,7 +55,7 @@ RadioButtonGroup::RadioButtonGroup(OptContentModelPrivate *ocModel, Array *rbarr
     }
 }
 
-RadioButtonGroup::~RadioButtonGroup() { }
+RadioButtonGroup::~RadioButtonGroup() = default;
 
 QSet<OptContentItem *> RadioButtonGroup::setItemOn(OptContentItem *itemToSetOn)
 {
@@ -95,7 +96,7 @@ OptContentItem::OptContentItem(const QString &label)
 
 OptContentItem::OptContentItem() : m_parent(nullptr), m_enabled(true) { }
 
-OptContentItem::~OptContentItem() { }
+OptContentItem::~OptContentItem() = default;
 
 void OptContentItem::appendRBGroup(RadioButtonGroup *rbgroup)
 {
@@ -151,7 +152,7 @@ QSet<OptContentItem *> OptContentItem::recurseListChildren(bool includeMe) const
     return ret;
 }
 
-OptContentModelPrivate::OptContentModelPrivate(OptContentModel *qq, OCGs *optContent) : q(qq)
+OptContentModelPrivate::OptContentModelPrivate(OptContentModel *qq, const OCGs *optContent) : q(qq)
 {
     m_rootNode = new OptContentItem();
     const auto &ocgs = optContent->getOCGs();
@@ -183,7 +184,7 @@ OptContentModelPrivate::~OptContentModelPrivate()
     delete m_rootNode;
 }
 
-void OptContentModelPrivate::parseOrderArray(OptContentItem *parentNode, Array *orderArray)
+void OptContentModelPrivate::parseOrderArray(OptContentItem *parentNode, const Array *orderArray)
 {
     OptContentItem *lastItem = parentNode;
     for (int i = 0; i < orderArray->getLength(); ++i) {
@@ -214,7 +215,7 @@ void OptContentModelPrivate::parseOrderArray(OptContentItem *parentNode, Array *
     }
 }
 
-void OptContentModelPrivate::parseRBGroupsArray(Array *rBGroupArray)
+void OptContentModelPrivate::parseRBGroupsArray(const Array *rBGroupArray)
 {
     if (!rBGroupArray) {
         return;
@@ -232,7 +233,7 @@ void OptContentModelPrivate::parseRBGroupsArray(Array *rBGroupArray)
     }
 }
 
-OptContentModel::OptContentModel(OCGs *optContent, QObject *parent) : QAbstractItemModel(parent)
+OptContentModel::OptContentModel(const OCGs *optContent, QObject *parent) : QAbstractItemModel(parent)
 {
     d = new OptContentModelPrivate(this, optContent);
 }
@@ -349,7 +350,7 @@ bool OptContentModel::setData(const QModelIndex &index, const QVariant &value, i
             Q_FOREACH (OptContentItem *item, changedItems) {
                 indexes.append(d->indexFromItem(item, 0));
             }
-            std::stable_sort(indexes.begin(), indexes.end());
+            std::stable_sort(indexes.begin(), indexes.end()); // NOLINT(modernize-use-ranges) We need Qt 6.8 for QModelIndexList to support ranges and our minimum requirement is 6.2
             Q_FOREACH (const QModelIndex &changedIndex, indexes) {
                 emit dataChanged(changedIndex, changedIndex);
             }
@@ -410,7 +411,7 @@ void OptContentModel::applyLink(LinkOCGState *link)
         Q_FOREACH (OptContentItem *item, changedItems) {
             indexes.append(d->indexFromItem(item, 0));
         }
-        std::stable_sort(indexes.begin(), indexes.end());
+        std::stable_sort(indexes.begin(), indexes.end()); // NOLINT(modernize-use-ranges) We need Qt 6.8 for QModelIndexList to support ranges and our minimum requirement is 6.2
         Q_FOREACH (const QModelIndex &changedIndex, indexes) {
             emit dataChanged(changedIndex, changedIndex);
         }

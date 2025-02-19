@@ -46,7 +46,7 @@ void PDFDisplay::display()
     }
 }
 
-PDFDisplay::~PDFDisplay() { }
+PDFDisplay::~PDFDisplay() = default;
 
 void PDFDisplay::paintEvent(QPaintEvent *e)
 {
@@ -121,7 +121,7 @@ int main(int argc, char **argv)
     test.setWindowTitle(QStringLiteral("Poppler-Qt6 Test"));
     test.show(); // show it
 
-    return a.exec(); // start event loop
+    return QApplication::exec(); // start event loop
 }
 
 #include "test-password-qt6.moc"

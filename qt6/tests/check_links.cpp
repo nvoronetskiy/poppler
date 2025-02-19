@@ -1,4 +1,4 @@
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include <poppler-qt6.h>
 
@@ -78,6 +78,10 @@ void TestLinks::checkDests_xr02()
     QVERIFY(isDestinationValid_pageNumber(dest.get(), doc.get()));
     QVERIFY(!isDestinationValid_name(dest.get()));
     dest = doc->linkDestination(QStringLiteral("section.3"));
+    QVERIFY(!isDestinationValid_pageNumber(dest.get(), doc.get()));
+    QVERIFY(isDestinationValid_name(dest.get()));
+    // Better check that a link that should be in the middle of the sorted names does not give one of the neighboring ones
+    dest = doc->linkDestination(QStringLiteral("section.15"));
     QVERIFY(!isDestinationValid_pageNumber(dest.get(), doc.get()));
     QVERIFY(isDestinationValid_name(dest.get()));
 }

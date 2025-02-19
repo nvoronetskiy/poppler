@@ -1,7 +1,7 @@
 /* poppler-private.h: qt interface to poppler
  * Copyright (C) 2005, Net Integration Technologies, Inc.
  * Copyright (C) 2005, 2008, Brad Hards <bradh@frogmouth.net>
- * Copyright (C) 2006-2009, 2011, 2012, 2017-2022 by Albert Astals Cid <aacid@kde.org>
+ * Copyright (C) 2006-2009, 2011, 2012, 2017-2022, 2024, 2025 by Albert Astals Cid <aacid@kde.org>
  * Copyright (C) 2007-2009, 2011, 2014 by Pino Toscano <pino@kde.org>
  * Copyright (C) 2011 Andreas Hartmetz <ahartmetz@gmail.com>
  * Copyright (C) 2011 Hib Eris <hib@hiberis.nl>
@@ -21,7 +21,7 @@
  * Copyright (C) 2021 Mahmoud Khalil <mahmoudkhalil11@gmail.com>
  * Copyright (C) 2021 Hubert Figuiere <hub@figuiere.net>
  * Copyright (C) 2021 Georgiy Sgibnev <georgiy@sgibnev.com>. Work sponsored by lab50.net.
- * Copyright (C) 2024 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
+ * Copyright (C) 2024, 2025 g10 Code GmbH, Author: Sune Stolborg Vuorela <sune@vuorela.dk>
  * Inspired on code by
  * Copyright (C) 2004 by Albert Astals Cid <tsdgeos@terra.es>
  * Copyright (C) 2004 by Enrico Ros <eros.kde@email.it>
@@ -79,13 +79,13 @@ POPPLER_QT6_EXPORT QString UnicodeParsedString(const GooString *s1);
 
 POPPLER_QT6_EXPORT QString UnicodeParsedString(const std::string &s1);
 
-POPPLER_QT6_EXPORT GooString *QStringToUnicodeGooString(const QString &s);
+POPPLER_QT6_EXPORT std::unique_ptr<GooString> QStringToUnicodeGooString(const QString &s);
 
 // Returns a big endian UTF-16 string with BOM or an empty string without BOM.
 // The caller owns the returned pointer.
-POPPLER_QT6_EXPORT GooString *QStringToGooString(const QString &s);
+POPPLER_QT6_EXPORT std::unique_ptr<GooString> QStringToGooString(const QString &s);
 
-GooString *QDateTimeToUnicodeGooString(const QDateTime &dt);
+std::unique_ptr<GooString> QDateTimeToUnicodeGooString(const QDateTime &dt);
 
 void qt6ErrorFunction(ErrorCategory /*category*/, Goffset pos, const char *msg);
 
@@ -112,9 +112,9 @@ public:
         m_filePath = filePath;
 
 #ifdef _WIN32
-        doc = new PDFDoc((wchar_t *)filePath.utf16(), filePath.length(), ownerPassword, userPassword, nullptr, std::bind(&DocumentData::noitfyXRefReconstructed, this));
+        doc = new PDFDoc((wchar_t *)filePath.utf16(), filePath.length(), ownerPassword, userPassword, std::bind(&DocumentData::noitfyXRefReconstructed, this));
 #else
-        doc = new PDFDoc(std::make_unique<GooString>(QFile::encodeName(filePath).constData()), ownerPassword, userPassword, nullptr, std::bind(&DocumentData::noitfyXRefReconstructed, this));
+        doc = new PDFDoc(std::make_unique<GooString>(QFile::encodeName(filePath).constData()), ownerPassword, userPassword, std::bind(&DocumentData::noitfyXRefReconstructed, this));
 #endif
     }
 
@@ -123,7 +123,7 @@ public:
         m_device = device;
         QIODeviceInStream *str = new QIODeviceInStream(device, 0, false, device->size(), Object(objNull));
         init();
-        doc = new PDFDoc(str, ownerPassword, userPassword, nullptr, std::bind(&DocumentData::noitfyXRefReconstructed, this));
+        doc = new PDFDoc(str, ownerPassword, userPassword, std::bind(&DocumentData::noitfyXRefReconstructed, this));
     }
 
     DocumentData(const QByteArray &data, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword) : GlobalParamsIniter(qt6ErrorFunction)
@@ -132,7 +132,7 @@ public:
         fileContents = data;
         MemStream *str = new MemStream((char *)fileContents.data(), 0, fileContents.length(), Object(objNull));
         init();
-        doc = new PDFDoc(str, ownerPassword, userPassword, nullptr, std::bind(&DocumentData::noitfyXRefReconstructed, this));
+        doc = new PDFDoc(str, ownerPassword, userPassword, std::bind(&DocumentData::noitfyXRefReconstructed, this));
     }
 
     void init();
@@ -196,14 +196,17 @@ public:
 
     explicit FontInfoData(::FontInfo *fi)
     {
-        if (fi->getName()) {
-            fontName = fi->getName()->c_str();
+        const std::optional<std::string> &fiName = fi->getName();
+        if (fiName) {
+            fontName = fiName->c_str();
         }
-        if (fi->getFile()) {
-            fontFile = fi->getFile()->c_str();
+        const std::optional<std::string> &fiFile = fi->getFile();
+        if (fiFile) {
+            fontFile = fiFile->c_str();
         }
-        if (fi->getSubstituteName()) {
-            fontSubstituteName = fi->getSubstituteName()->c_str();
+        const std::optional<std::string> &fiSubstituteName = fi->getSubstituteName();
+        if (fiSubstituteName) {
+            fontSubstituteName = fiSubstituteName->c_str();
         }
         isEmbedded = fi->getEmbedded();
         isSubset = fi->getSubset();
@@ -228,7 +231,7 @@ class FontIteratorData
 public:
     FontIteratorData(int startPage, DocumentData *dd) : fontInfoScanner(dd->doc, startPage), totalPages(dd->doc->getNumPages()), currentPage(qMax(startPage, 0) - 1) { }
 
-    ~FontIteratorData() { }
+    ~FontIteratorData() = default;
 
     FontInfoScanner fontInfoScanner;
     int totalPages;
