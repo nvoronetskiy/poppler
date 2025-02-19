@@ -158,6 +158,11 @@ int Lexer::lookChar()
     }
 }
 
+bool fast_is_digit(int c)
+{
+    return (c >= '0') && (c <= '9');
+}
+
 Object Lexer::getObj(int objNum)
 {
     char *p;
@@ -216,7 +221,7 @@ Object Lexer::getObj(int objNum)
         }
         while (true) {
             c = lookChar();
-            if (isdigit(c)) {
+            if (fast_is_digit(c)) {
                 getChar();
                 if (unlikely(overflownLongLong)) {
                     xf = xf * 10.0 + (c - '0');
